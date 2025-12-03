@@ -4,7 +4,9 @@
 # nextfile/previous file use the same starting position, these should start at the beginning
 # screen shouldn't log out due to inactivity
 # set sleep timer by hour
-
+# ctrl+c kills the whole script, not just the current video
+# if it runs to the very end of credits, go to next file, not next shuffle
+#
 #
 #detox . -r -v
 

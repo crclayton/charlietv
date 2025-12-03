@@ -1,5 +1,7 @@
 local utils = require 'mp.utils'
 local msg = require 'mp.msg'
+--local mp = require 'mp'
+
 local settings = {
 
   filetypes = {
@@ -13,7 +15,7 @@ local settings = {
 
   --at end of directory jump to start and vice versa
   allow_looping = true,
-  
+
   --order by natural (version) numbers, thus behaving case-insensitively and treating multi-digit numbers atomically
   --e.x.: true will result in the following order:   09A 9A  09a 9a  10A 10a
   --      while false will result in:                09a 09A 10a 10A 9a  9A
@@ -41,6 +43,14 @@ end
 
 function nexthandler()
   movetofile(true)
+
+--    -- Go to next file
+--    mp.commandv("script-binding", "nextfile")
+--    -- Once the new file is loaded, seek to start
+--    mp.register_event("file-loaded", function()
+--        mp.commandv("seek", "0", "absolute")
+--    end)
+
 end
 
 function prevhandler()
@@ -57,7 +67,7 @@ function get_files_windows(dir)
           $path = "]]..dir..[["
           $escapedPath = [WildcardPattern]::Escape($path)
           cd $escapedPath
-    
+
           $list = (Get-ChildItem -File | Sort-Object { [regex]::Replace($_.Name, '\d+', { $args[0].Value.PadLeft(20) }) }).Name
           $string = ($list -join "/")
           $u8list = [System.Text.Encoding]::UTF8.GetBytes($string)
@@ -148,6 +158,8 @@ function movetofile(forward)
     mp.commandv("loadfile", utils.join_path(dir, memory), "replace")
     show_osd_message(memory)
   end
+
+
 end
 
 mp.add_key_binding('Shift+RIGHT', 'nextfile', nexthandler)

@@ -68,7 +68,7 @@ mpv "$movie" \
     --sub-delay=0 \
     --secondary-sub-delay=0 \
     --speed=1 \
-    --sub-scale=1.3 \
+    --sub-scale=1.1 \
     --sub-align-x=center \
     --sub-pos=99 \
     --sub-margin-y=0 \
@@ -77,15 +77,23 @@ mpv "$movie" \
     --sub-font="Nimbus Sans" \
     --sub-ass-override=force \
     --embeddedfonts=no \
-    --scripts=nextfile_and_rewind.lua \
-    --scripts=nextfile.lua \
+    --script=navigator.lua \
+    --script=nextfile.lua \
+    --script=auto-nextfile.lua \
+    --script=nextfile_and_rewind.lua \
     --sub-border-size=1 \
     --sub-shadow-offset=3 \
     --sub-shadow-color='#000000' \
     --window-maximized=yes \
-    --fullscreen \
-    --glsl-shader=$shader #\
-#    --idle="yes" \
+    --fullscreen #\
+    ###--keep-open=yes
+    #--scripts=nextfile.lua \
+    #--scripts=nextfile_and_rewind.lua \
+    #--scripts=auto-nextfile.lua \
+#    --glsl-shader=$shader \
 #    --force-window=yes \
-#    --keep-open=yes \
 
+#    --idle="yes" \
+#
+#
+## progress-bar-always.lua:nextfile.lua:navigator.lua \
