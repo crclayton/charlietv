@@ -87,14 +87,14 @@ mpv "$movie" \
     --gpu-api=vulkan \
     --video-sync=display-resample \
     --osd-playing-msg="$datestr" \
-    --osd-playing-msg-duration=5000 \
+    --osd-playing-msg-duration=6000 \
     --aid="$aid" \
     --sid="$sid" \
     --secondary-sid="$secondary_sid" \
     --sub-delay=0 \
     --secondary-sub-delay=0 \
     --speed=1 \
-    --sub-scale=1.1 \
+    --sub-scale=1 \
     --sub-align-x=center \
     --sub-pos=99 \
     --sub-margin-y=0 \
