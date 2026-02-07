@@ -3,6 +3,7 @@
 input="$1"
 
 movie="$input"
+
 # === Batch mode: shuffle directory ===
 if [[ -z "$input" || -d "$input" ]]; then
     echo "No movie file specified or input is a directory."
@@ -32,7 +33,6 @@ secondary_sid="${secondary_sid:-0}"
 
 echo "Using: aid=$aid, sid=$sid (ita), secondary-sid=$secondary_sid (eng)"
 
-starttime=$((RANDOM % $(ffprobe -v error -show_entries format=duration -of csv=p=0 "$movie" | cut -d. -f1)))
 
 shaders=(
   "Default"
@@ -52,16 +52,42 @@ shaders=(
 # Pick one shader at random
 shader=${shaders[RANDOM % ${#shaders[@]}]}
 
+#datestr="$(date '+%-d %b (%a) %I:%M%p')"
+datestr="$(date '+%I:%M%p')"
+
+
+starttime="${2:-}"
+full_movie="$(realpath "$movie")"
+
+# If it's in /New/, always start at 0
+if [[ "$full_movie" == *"/New/"* ]]; then
+  starttime=0
+fi
+
+# If $2 not provided (and not forced to 0 above), pick a random start time
+if [[ -z "${starttime}" ]]; then
+  dur="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$movie" | cut -d. -f1)"
+  if [[ -z "$dur" || "$dur" -le 0 ]]; then
+    starttime=0
+  else
+    starttime=$(( RANDOM % dur ))
+  fi
+fi
+
+
+
 
 # === Launch MPV
 mpv "$movie" \
     --input-conf="input.conf" \
     --config-dir="." \
     --profile=norm \
-    --vo=gpu-next \
     --start=$starttime \
-    --osd-playing-msg="$movie" \
-    --osd-playing-msg-duration="5000" \
+    --vo=gpu-next \
+    --gpu-api=vulkan \
+    --video-sync=display-resample \
+    --osd-playing-msg="$datestr" \
+    --osd-playing-msg-duration=5000 \
     --aid="$aid" \
     --sid="$sid" \
     --secondary-sid="$secondary_sid" \
@@ -78,6 +104,7 @@ mpv "$movie" \
     --sub-ass-override=force \
     --embeddedfonts=no \
     --script=navigator.lua \
+    --script=delete_file.lua \
     --script=nextfile.lua \
     --script=auto-nextfile.lua \
     --script=nextfile_and_rewind.lua \

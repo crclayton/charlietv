@@ -29,6 +29,10 @@ local function on_time_remaining(name, value)
         mp.unobserve_property(on_time_remaining)
         -- Call your existing script-binding
         mp.commandv("script-binding", "nextfile")
+
+        mp.register_event("file-loaded", function()
+            mp.commandv("seek", "0", "absolute")
+        end)
     end
 end
 

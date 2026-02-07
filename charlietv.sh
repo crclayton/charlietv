@@ -13,7 +13,7 @@
 #pulseaudio &
 
 total=20
-w_movies=50 w_tv=49 w_sports=1
+w_movies=45 w_tv=45 w_sports=10
 
 
 #mpv --idle=yes --force-window=yes --keep-open=yes \
@@ -24,9 +24,9 @@ w_movies=50 w_tv=49 w_sports=1
 if [ $# -eq 0 ]
   then
     echo "No argument"
-    TVROOT="/media/crclayton/TOSHIBA EXT/TV"
-    MOVIEROOT="/media/crclayton/TOSHIBA EXT/Movies"
-    SPORTROOT="/media/crclayton/TOSHIBA EXT/Sports"
+    TVROOT="./TV"
+    MOVIEROOT="./Movies"
+    SPORTROOT="./New"
   else
     TVROOT=$1
     MOVIEROOT=$1
