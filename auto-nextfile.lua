@@ -20,7 +20,7 @@
 local mp = require 'mp'
 
 -- How close to the end (in seconds) before we trigger nextfile
-local THRESHOLD = 0.1
+local THRESHOLD = 5
 
 local function on_time_remaining(name, value)
     if value == nil then return end

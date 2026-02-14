@@ -7,7 +7,7 @@
 #   p = previous channel
 #   q = quit
 
-total=25
+total=35
 
 w_movies=45
 w_tv=45
@@ -177,12 +177,13 @@ choose_start_offset() {
 
   dur="$(duration_seconds "$f")"
 
-  # If we can't get duration, fall back to the default 2-hour rolling offset.
+  # If we can't determine duration, fall back to 2-hour rolling offset
   if [[ -z "$dur" ]] || (( dur <= 0 )); then
     offset_since_even_hour
     return
   fi
 
+  # Select clock-based offset window
   if (( dur < 1800 )); then
     off="$(offset_since_half_hour)"
   elif (( dur < 3600 )); then
@@ -191,13 +192,9 @@ choose_start_offset() {
     off="$(offset_since_even_hour)"
   fi
 
-  if (( off >= dur )); then
-    echo 0
-  else
-    echo "$off"
-  fi
+  # Wrap instead of clamp
+  echo $(( off % dur ))
 }
-
 
 
 ### # Choose start offset:

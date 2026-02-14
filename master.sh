@@ -58,10 +58,12 @@ datestr="$(date '+%I:%M%p')"
 
 starttime="${2:-}"
 full_movie="$(realpath "$movie")"
+movie_only="$(basename "$full_movie")"
+
 
 # If it's in /New/, always start at 0
 if [[ "$full_movie" == *"/New/"* ]]; then
-  starttime=0
+  starttime=5
 fi
 
 # If $2 not provided (and not forced to 0 above), pick a random start time
@@ -74,7 +76,7 @@ if [[ -z "${starttime}" ]]; then
   fi
 fi
 
-
+s=$starttime; h=$((s/3600)); m=$(((s%3600)/60)); ((h)) && duration="${h}h${m}min" || duration="${m}min"
 
 
 # === Launch MPV
@@ -84,10 +86,13 @@ mpv "$movie" \
     --profile=norm \
     --start=$starttime \
     --vo=gpu-next \
-    --gpu-api=vulkan \
     --video-sync=display-resample \
-    --osd-playing-msg="$datestr" \
-    --osd-playing-msg-duration=6000 \
+    --osd-playing-msg="$datestr [$duration] $movie_only" \
+    --osd-playing-msg-duration=10000 \
+    --osd-font="Nimbus Sans" \
+    --osd-border-size=1 \
+    --osd-shadow-offset=3 \
+    --osd-shadow-color='#000000' \
     --aid="$aid" \
     --sid="$sid" \
     --secondary-sid="$secondary_sid" \
@@ -101,20 +106,20 @@ mpv "$movie" \
     --sub-border-color='#000000' \
     --sub-color='#eb9605' \
     --sub-font="Nimbus Sans" \
+    --sub-border-size=1 \
+    --sub-shadow-offset=3 \
+    --sub-shadow-color='#000000' \
     --sub-ass-override=force \
     --embeddedfonts=no \
     --script=navigator.lua \
     --script=delete_file.lua \
-    --script=nextfile.lua \
+    --scripts=nextfile.lua \
     --script=auto-nextfile.lua \
-    --script=nextfile_and_rewind.lua \
-    --sub-border-size=1 \
-    --sub-shadow-offset=3 \
-    --sub-shadow-color='#000000' \
     --window-maximized=yes \
     --fullscreen #\
+    #--script=nextfile_and_rewind.lua \
+    #--gpu-api=vulkan \
     ###--keep-open=yes
-    #--scripts=nextfile.lua \
     #--scripts=nextfile_and_rewind.lua \
     #--scripts=auto-nextfile.lua \
 #    --glsl-shader=$shader \
