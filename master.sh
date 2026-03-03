@@ -63,7 +63,7 @@ movie_only="$(basename "$full_movie")"
 
 # If it's in /New/, always start at 0
 if [[ "$full_movie" == *"/New/"* ]]; then
-  starttime=5
+  starttime=10
 fi
 
 # If $2 not provided (and not forced to 0 above), pick a random start time
@@ -111,12 +111,14 @@ mpv "$movie" \
     --sub-shadow-color='#000000' \
     --sub-ass-override=force \
     --embeddedfonts=no \
-    --script=navigator.lua \
-    --script=delete_file.lua \
-    --scripts=nextfile.lua \
     --script=auto-nextfile.lua \
+    --scripts=nextfile_and_rewind.lua \
+    --scripts=nextfile.lua \
     --window-maximized=yes \
     --fullscreen #\
+    #--script=navigator.lua \
+    #--script=delete_file.lua \
+    #--scripts=previousfile.lua
     #--script=nextfile_and_rewind.lua \
     #--gpu-api=vulkan \
     ###--keep-open=yes

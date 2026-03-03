@@ -159,8 +159,11 @@ function movetofile(forward)
     show_osd_message(memory)
   end
 
+    mp.register_event("file-loaded", function()
+        mp.commandv("seek", "0", "absolute")
+    end)
 
 end
 
-mp.add_key_binding('Shift+RIGHT', 'nextfile', nexthandler)
-mp.add_key_binding('Shift+LEFT', 'previousfile', prevhandler)
+mp.add_key_binding('KP6', 'nextfile', nexthandler)
+mp.add_key_binding('KP4', 'previousfile', prevhandler)

@@ -9,9 +9,9 @@
 
 total=35
 
-w_movies=45
-w_tv=45
-w_new=10
+w_movies=33
+w_tv=33
+w_new=33
 
 
 # Anchor for "broadcast day" sync (10:00 AM local by default)
@@ -240,7 +240,7 @@ start_current() {
    full_movie=$(realpath "$movie")
 
         if [[ "$full_movie" == *"/New/"* ]]; then
-            $start=0
+            $start=10 # I don' tthink this does anything
         fi
 
 
