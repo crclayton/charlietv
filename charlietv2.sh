@@ -9,9 +9,9 @@
 
 total=35
 
-w_movies=33
-w_tv=33
-w_new=33
+w_movies=33 #33
+w_tv=34
+w_new=33 #33
 
 
 # Anchor for "broadcast day" sync (10:00 AM local by default)
@@ -74,8 +74,12 @@ mapfile -d '' LINEUP < <(
       find "$MOVIEROOT" -type f -regextype posix-extended -iregex "$re" -print0 \
       | shuf -z -n "$n_movies" 2>/dev/null || true
 
-    # TV — normalize by show: pick n_tv shows uniformly, then one ep per show
+# TV — normalize by show: pick n_tv shows uniformly, then one deterministic ep per show
     (( n_tv > 0 )) && {
+
+        # To this (Total days since Jan 1, 1970):
+        days_since_epoch=$(( $(date +%s) / 86400 ))
+
       mapfile -d '' shows < <(
         find "$TVROOT" -type f -regextype posix-extended -iregex "$re" -printf '%P\0' \
         | awk -v RS='\0' -v ORS='\0' -F/ '{print $1}' \
@@ -84,10 +88,18 @@ mapfile -d '' LINEUP < <(
       )
 
       for show in "${shows[@]}"; do
-        find "$TVROOT/$show" -type f -regextype posix-extended -iregex "$re" -print0 \
-          | shuf -z -n 1
+        # 2. Get all episodes for THIS show into an array, sorted alphabetically
+        mapfile -d '' episodes < <(find "$TVROOT/$show" -type f -regextype posix-extended -iregex "$re" -print0 | sort -z)
+
+        num_episodes=${#episodes[@]}
+
+        if (( num_episodes > 0 )); then
+          index=$(( days_since_epoch % num_episodes ))
+          printf '%s\0' "${episodes[$index]}"
+        fi
       done
     } || true
+
 
     # Sports
     (( n_sports > 0 )) && \
@@ -203,10 +215,10 @@ choose_start_offset() {
 ### choose_start_offset() {
 ###   local f="$1"
 ###   local off dur mph
-### 
+###
 ###   off="$(anchor_offset_seconds)"
 ###   dur="$(duration_seconds "$f")"
-### 
+###
 ###   if [[ -n "$dur" ]] && (( dur > 0 )) && (( off >= dur )); then
 ###     mph="$(minutes_past_hour_seconds)"
 ###     echo "$mph"

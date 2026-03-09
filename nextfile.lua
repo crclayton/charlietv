@@ -161,6 +161,7 @@ function movetofile(forward)
 
     mp.register_event("file-loaded", function()
         mp.commandv("seek", "0", "absolute")
+        mp.osd_message("New file", 10)  -- Adjust OSD display time as needed
     end)
 
 end
