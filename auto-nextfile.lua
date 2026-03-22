@@ -1,9 +1,9 @@
 
 
 -- local mp = require 'mp'
--- 
+--
 -- local msg = require 'mp.msg'
--- 
+--
 -- local function on_end_file(event)
 --     msg.info("end-file reason: " .. tostring(event.reason))
 --     -- only react when we hit actual EOF
@@ -12,7 +12,7 @@
 --         mp.commandv("script-binding", "nextfile")
 --     end
 -- end
--- 
+--
 -- mp.register_event("end-file", on_end_file)
 --
 --
@@ -32,6 +32,15 @@ local function on_time_remaining(name, value)
 
         mp.register_event("file-loaded", function()
             mp.commandv("seek", "0", "absolute")
+
+        -- Option 2: Overwrite the actual 'osd-playing-msg' property for this file.
+        -- (You can pull in the filename or media title dynamically)
+        local filename = mp.get_property("filename")
+        mp.set_property("osd-playing-msg", "Fuckin' AUTOMATICALLY playing next episode: " .. filename)
+
+        -- Option 3: Force mpv to display whatever your standard osd-playing-msg is
+        mp.commandv("show-text", mp.get_property_osd("osd-playing-msg"))
+
         end)
     end
 end

@@ -7,7 +7,7 @@
 #   p = previous channel
 #   q = quit
 
-total=35
+total=25
 
 w_movies=33 #33
 w_tv=34
@@ -323,6 +323,6 @@ while true; do
   esac
 
   # tiny sleep to avoid busy looping
-  sleep 0.05
+  sleep 0.5
 done
 
