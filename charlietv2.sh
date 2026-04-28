@@ -3,9 +3,11 @@
 
 # charlietv_v2.sh
 # Keys while running:
-#   n = next channel
-#   p = previous channel
-#   q = quit
+#   right arrow = next channel
+#   left arrow  = previous channel
+#   q           = quit
+
+# apr 28, louie season 2 episode 2
 
 total=25
 
@@ -66,25 +68,28 @@ read -r n_movies n_tv n_sports < <(
     }'
 )
 
+# Compute day index once — used for both episode selection and seeding all shuffles
+days_since_epoch=$(( $(date +%s) / 86400 ))
+# Generates a deterministic stream of pseudo-random bytes seeded by the day,
+# so the entire lineup is stable for the whole calendar day.
+_day_seed() { awk -v seed="$days_since_epoch" 'BEGIN{srand(seed); for(i=0;i<4096;i++) printf "%c", int(rand()*256)}'; }
+
 # Build lineup (NUL-delimited) then shuffle and load into a bash array
 mapfile -d '' LINEUP < <(
   {
     # Movies
     (( n_movies > 0 )) && \
       find "$MOVIEROOT" -type f -regextype posix-extended -iregex "$re" -print0 \
-      | shuf -z -n "$n_movies" 2>/dev/null || true
+      | shuf -z -n "$n_movies"  2>/dev/null || true
 
 # TV — normalize by show: pick n_tv shows uniformly, then one deterministic ep per show
     (( n_tv > 0 )) && {
-
-        # To this (Total days since Jan 1, 1970):
-        days_since_epoch=$(( $(date +%s) / 86400 ))
 
       mapfile -d '' shows < <(
         find "$TVROOT" -type f -regextype posix-extended -iregex "$re" -printf '%P\0' \
         | awk -v RS='\0' -v ORS='\0' -F/ '{print $1}' \
         | sort -zu \
-        | shuf -z -n "$n_tv"
+        | shuf -z -n "$n_tv" #--random-source=<(_day_seed)
       )
 
       for show in "${shows[@]}"; do
@@ -108,7 +113,6 @@ mapfile -d '' LINEUP < <(
   } | shuf -z 2>/dev/null
 )
 
-echo "playable"
 if [ "${#LINEUP[@]}" -eq 0 ]; then
   echo "No playable files found."
   exit 1
@@ -249,22 +253,12 @@ start_current() {
   local start
   start="$(choose_start_offset "$f")"
 
-   full_movie=$(realpath "$movie")
+  #echo
+  #echo "Channel $((idx+1))/${#LINEUP[@]}"
+  #echo "File: $f"
+  #echo "Start offset: ${start}s"
+  #echo "(q=quit)"
 
-        if [[ "$full_movie" == *"/New/"* ]]; then
-            $start=10 # I don' tthink this does anything
-        fi
-
-
-  echo
-  echo "Channel $((idx+1))/${#LINEUP[@]}"
-  echo "File: $f"
-  echo "Start offset: ${start}s"
-  echo "(<=next, >=prev, q=quit)"
-
-  # Provide start offset both ways:
-  #  - as env var (easy for master.sh to use)
-  #  - as $2 argument (in case master.sh already supports it)
   CHARLIETV_START_SECONDS="$start" bash master.sh "$f" "$start" &
   PLAYER_PID=$!
 }
@@ -272,57 +266,23 @@ start_current() {
 start_current "${LINEUP[$idx]}"
 
 while true; do
-
-    echo "true"
-  # If player exits naturally, advance to next
-  if [[ -n "${PLAYER_PID}" ]] && ! kill -0 "${PLAYER_PID}" 2>/dev/null; then
-    wait "${PLAYER_PID}" 2>/dev/null || true
-    idx=$(( (idx + 1) % ${#LINEUP[@]} ))
-    start_current "${LINEUP[$idx]}"
+  # Allow quitting from terminal when mpv doesn't have focus
+  IFS= read -r -s -t 0.1 -N 1 key 2>/dev/null || true
+  if [[ "$key" == "q" ]] || [[ "$key" == $'\'' ]]; then
+    exit 0
   fi
 
-  # Non-blocking key read
-  key="$(dd bs=1 count=1 2>/dev/null || true)"
+  # When player exits, check exit code for direction (set by input.conf bindings)
+  # 3=prev, 4=next, 5=quit, anything else=natural end→next
+  if [[ -n "${PLAYER_PID}" ]] && ! kill -0 "${PLAYER_PID}" 2>/dev/null; then
+    wait "${PLAYER_PID}" 2>/dev/null; player_exit=$?
 
-  case "$key" in
-    # . and , map to the same as v and w in dvorak
-    .)
-      kill -TERM "${PLAYER_PID}" 2>/dev/null || true
-      wait "${PLAYER_PID}" 2>/dev/null || true
-      idx=$(( (idx + 1) % ${#LINEUP[@]} ))
-      start_current "${LINEUP[$idx]}"
-      ;;
-    ,)
-      kill -TERM "${PLAYER_PID}" 2>/dev/null || true
-      wait "${PLAYER_PID}" 2>/dev/null || true
-      idx=$(( (idx - 1 + ${#LINEUP[@]}) % ${#LINEUP[@]} ))
-      start_current "${LINEUP[$idx]}"
-      ;;
-    # . and , map to the same as v and w in dvorak
-    v)
-      kill -TERM "${PLAYER_PID}" 2>/dev/null || true
-      wait "${PLAYER_PID}" 2>/dev/null || true
-      idx=$(( (idx + 1) % ${#LINEUP[@]} ))
-      start_current "${LINEUP[$idx]}"
-      ;;
-    w)
-      kill -TERM "${PLAYER_PID}" 2>/dev/null || true
-      wait "${PLAYER_PID}" 2>/dev/null || true
-      idx=$(( (idx - 1 + ${#LINEUP[@]}) % ${#LINEUP[@]} ))
-      start_current "${LINEUP[$idx]}"
-      ;;
-    q)
-      exit 0
-      ;;
-    \')
-      exit 0
-      ;;
-    *)
-      # no key pressed / unhandled key
-      ;;
-  esac
-
-  # tiny sleep to avoid busy looping
-  sleep 0.5
+    case $player_exit in
+      3) idx=$(( (idx - 1 + ${#LINEUP[@]}) % ${#LINEUP[@]} )) ;;
+      5) exit 0 ;;
+      *) idx=$(( (idx + 1) % ${#LINEUP[@]} )) ;;
+    esac
+    start_current "${LINEUP[$idx]}"
+  fi
 done
 

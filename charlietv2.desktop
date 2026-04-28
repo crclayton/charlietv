@@ -1,0 +1,7 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=CharlieTV2
+Exec=bash -c "cd '/media/crclayton/TOSHIBA EXT' && bash charlietv2.sh"
+Terminal=true
+Icon=utilities-terminal

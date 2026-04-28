@@ -78,16 +78,21 @@ fi
 
 s=$starttime; h=$((s/3600)); m=$(((s%3600)/60)); ((h)) && duration="${h}h${m}min" || duration="${m}min"
 
+    #--osd-playing-msg="$datestr [$duration] $movie_only" \
+    #--vo=gpu-next \
+    #--video-sync=display-resample \
 
 # === Launch MPV
 mpv "$movie" \
+    --really-quiet \
+    --display-tags-clr \
+    --no-terminal \
+    --msg-level=all=no \
     --input-conf="input.conf" \
     --config-dir="." \
     --profile=norm \
     --start=$starttime \
-    --vo=gpu-next \
-    --video-sync=display-resample \
-    --osd-playing-msg="$datestr [$duration] $movie_only" \
+    --osd-playing-msg="$movie_only [Began $duration ago]\nPress q to quit, 0 to start from beginning, ← and → to change channels" \
     --osd-playing-msg-duration=10000 \
     --osd-font="Nimbus Sans" \
     --osd-border-size=1 \
@@ -114,8 +119,10 @@ mpv "$movie" \
     --scripts=nextfile_and_rewind.lua \
     --scripts=nextfile.lua \
     --script=auto-nextfile.lua \
-    --window-maximized=yes \
     --fullscreen #\
+    #--auto-window-resize=no \
+    #--save-position-on-quit
+    #--window-maximized=yes \
     #--script=navigator.lua \
     #--script=delete_file.lua \
     #--scripts=previousfile.lua
