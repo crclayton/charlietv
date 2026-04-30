@@ -280,6 +280,10 @@ while true; do
     case $player_exit in
       3) idx=$(( (idx - 1 + ${#LINEUP[@]}) % ${#LINEUP[@]} )) ;;
       5) exit 0 ;;
+      6) rm -- "${LINEUP[$idx]}"
+         LINEUP=("${LINEUP[@]:0:$idx}" "${LINEUP[@]:$((idx+1))}")
+         [[ "${#LINEUP[@]}" -eq 0 ]] && exit 0
+         idx=$(( idx % ${#LINEUP[@]} )) ;;
       *) idx=$(( (idx + 1) % ${#LINEUP[@]} )) ;;
     esac
     start_current "${LINEUP[$idx]}"

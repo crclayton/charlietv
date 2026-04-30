@@ -1,7 +1,6 @@
 #!/bin/bash
 
 input="$1"
-
 movie="$input"
 
 # === Batch mode: shuffle directory ===
@@ -12,7 +11,7 @@ if [[ -z "$input" || -d "$input" ]]; then
     echo $movie
 fi
 
-echo "Movie: $movie"
+echo "$movie"
 
 # === Get full MPV stream listing from stdout ===
 output=$(mpv --frames=0 --vo=null --ao=null --no-config "$movie" 2>&1)
@@ -31,7 +30,7 @@ aid="${aid:-1}"
 sid="${sid:-1}"
 secondary_sid="${secondary_sid:-0}"
 
-echo "Using: aid=$aid, sid=$sid (ita), secondary-sid=$secondary_sid (eng)"
+# echo "Using: aid=$aid, sid=$sid (ita), secondary-sid=$secondary_sid (eng)"
 
 
 shaders=(
@@ -79,20 +78,21 @@ fi
 s=$starttime; h=$((s/3600)); m=$(((s%3600)/60)); ((h)) && duration="${h}h${m}min" || duration="${m}min"
 
     #--osd-playing-msg="$datestr [$duration] $movie_only" \
-    #--vo=gpu-next \
-    #--video-sync=display-resample \
+
 
 # === Launch MPV
 mpv "$movie" \
     --really-quiet \
     --display-tags-clr \
+    --vo=gpu-next \
+    --video-sync=display-resample \
     --no-terminal \
     --msg-level=all=no \
     --input-conf="input.conf" \
     --config-dir="." \
     --profile=norm \
     --start=$starttime \
-    --osd-playing-msg="$movie_only [Began $duration ago]\nPress q to quit, 0 to start from beginning, ← and → to change channels" \
+    --osd-playing-msg="$movie_only [Began $duration ago]\nPress q to quit, 0 to start from beginning, ← and → to change channels, enter to go to next episode" \
     --osd-playing-msg-duration=10000 \
     --osd-font="Nimbus Sans" \
     --osd-border-size=1 \
