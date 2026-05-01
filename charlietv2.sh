@@ -11,9 +11,9 @@
 
 total=25
 
-w_movies=33 #33
-w_tv=34
-w_new=33 #33
+w_movies=25 #33
+w_tv=50
+w_new=25 #33
 
 
 # Anchor for "broadcast day" sync (10:00 AM local by default)
@@ -32,7 +32,7 @@ fi
 
 re='.*\.(mp4|mkv|avi|mov|wmv|flv|webm|mpg|mpeg|m4v|3gp|ts|vob|ogv)$'
 
-read n_movies n_tv n_sports < <(
+read n_movies n_tv n_new < <(
   awk -v total="$total" -v m="$w_movies" -v t="$w_tv" -v s="$w_new" '
     BEGIN{
       sum=m+t+s
@@ -51,7 +51,7 @@ read n_movies n_tv n_sports < <(
 re='.*\.(mp4|mkv|avi|mov|wmv|flv|webm|mpg|mpeg|m4v|3gp|ts|vob|ogv)$'
 
 # Compute integer quotas from weights (same approach as your v1)
-read -r n_movies n_tv n_sports < <(
+read -r n_movies n_tv n_new < <(
   awk -v total="$total" -v m="$w_movies" -v t="$w_tv" -v s="$w_new" '
     BEGIN{
       sum=m+t+s
@@ -73,6 +73,19 @@ days_since_epoch=$(( $(date +%s) / 86400 ))
 # Generates a deterministic stream of pseudo-random bytes seeded by the day,
 # so the entire lineup is stable for the whole calendar day.
 _day_seed() { awk -v seed="$days_since_epoch" 'BEGIN{srand(seed); for(i=0;i<4096;i++) printf "%c", int(rand()*256)}'; }
+
+# Spinner shown while indexing files
+_spinner() {
+  local frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+  local i=0
+  while true; do
+    printf "\r  %s  Indexing files..." "${frames[$((i % 10))]}"
+    sleep 0.1
+    (( i++ )) || true
+  done
+}
+_spinner &
+SPINNER_PID=$!
 
 # Build lineup (NUL-delimited) then shuffle and load into a bash array
 mapfile -d '' LINEUP < <(
@@ -107,11 +120,14 @@ mapfile -d '' LINEUP < <(
 
 
     # Sports
-    (( n_sports > 0 )) && \
+    (( n_new > 0 )) && \
       find "$NEWROOT" -type f -regextype posix-extended -iregex "$re" -print0 \
-      | shuf -z -n "$n_sports" 2>/dev/null || true
+      | shuf -z -n "$n_new" 2>/dev/null || true
   } | shuf -z 2>/dev/null
 )
+
+kill "$SPINNER_PID" 2>/dev/null; wait "$SPINNER_PID" 2>/dev/null || true
+printf "\r\033[K"  # clear spinner line
 
 if [ "${#LINEUP[@]}" -eq 0 ]; then
   echo "No playable files found."
@@ -280,7 +296,16 @@ while true; do
     case $player_exit in
       3) idx=$(( (idx - 1 + ${#LINEUP[@]}) % ${#LINEUP[@]} )) ;;
       5) exit 0 ;;
-      6) rm -- "${LINEUP[$idx]}"
+      6) f="${LINEUP[$idx]}"
+         rm -f -- "$f" && echo "Deleted: $(basename "$f")" || echo "Delete failed: $f" >&2
+         LINEUP=("${LINEUP[@]:0:$idx}" "${LINEUP[@]:$((idx+1))}")
+         [[ "${#LINEUP[@]}" -eq 0 ]] && exit 0
+         idx=$(( idx % ${#LINEUP[@]} )) ;;
+      7) f="${LINEUP[$idx]}"
+         if [[ "$f" == "$NEWROOT/"* ]]; then
+           echo "Saving $f"
+           mv -- "$f" "$MOVIEROOT/"
+         fi
          LINEUP=("${LINEUP[@]:0:$idx}" "${LINEUP[@]:$((idx+1))}")
          [[ "${#LINEUP[@]}" -eq 0 ]] && exit 0
          idx=$(( idx % ${#LINEUP[@]} )) ;;

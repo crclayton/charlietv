@@ -14,7 +14,7 @@ fi
 echo "$movie"
 
 # === Get full MPV stream listing from stdout ===
-output=$(mpv --frames=0 --vo=null --ao=null --no-config "$movie" 2>&1)
+output=$(./mpv.AppImage --frames=0 --vo=null --ao=null --no-config "$movie" 2>&1)
 
 # === Extract Italian audio
 aid=$(echo "$output" | grep -E -- '--aid=[0-9]+' | grep -- '--alang=en' | sed -n 's/.*--aid=\([0-9]\+\).*/\1/p' | head -n1)
@@ -80,21 +80,26 @@ s=$starttime; h=$((s/3600)); m=$(((s%3600)/60)); ((h)) && duration="${h}h${m}min
     #--osd-playing-msg="$datestr [$duration] $movie_only" \
 
 
+
+
+
 # === Launch MPV
-mpv "$movie" \
+./mpv.AppImage "$movie" \
     --really-quiet \
+    --no-terminal \
+    --msg-level=all=no \
     --display-tags-clr \
     --vo=gpu-next \
     --video-sync=display-resample \
-    --no-terminal \
-    --msg-level=all=no \
     --input-conf="input.conf" \
     --config-dir="." \
     --profile=norm \
     --start=$starttime \
-    --osd-playing-msg="$movie_only [Began $duration ago]\nPress q to quit, 0 to start from beginning, ← and → to change channels, enter to go to next episode" \
-    --osd-playing-msg-duration=10000 \
+    --osd-playing-msg="$movie_only [Began $duration ago]\nPress (q) to quit, ← and → to change channels, (i) for more instructions" \
+    --osd-playing-msg-duration=5000 \
     --osd-font="Nimbus Sans" \
+    --osd-font-size=24 \
+    --osd-color='#eb9605' \
     --osd-border-size=1 \
     --osd-shadow-offset=3 \
     --osd-shadow-color='#000000' \
@@ -102,7 +107,6 @@ mpv "$movie" \
     --sid="$sid" \
     --secondary-sid="$secondary_sid" \
     --sub-delay=0 \
-    --secondary-sub-delay=0 \
     --speed=1 \
     --sub-scale=1 \
     --sub-align-x=center \
@@ -120,6 +124,8 @@ mpv "$movie" \
     --scripts=nextfile.lua \
     --script=auto-nextfile.lua \
     --fullscreen #\
+
+    #--secondary-sub-delay=0 \
     #--auto-window-resize=no \
     #--save-position-on-quit
     #--window-maximized=yes \
