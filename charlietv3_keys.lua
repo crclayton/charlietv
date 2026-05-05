@@ -12,14 +12,20 @@ mp.add_key_binding(nil, "tv-quit",   function() send("quit") end)
 mp.add_key_binding(nil, "tv-delete", function() send("delete") end)
 mp.add_key_binding(nil, "tv-save",   function() send("save") end)
 
--- Seek to position on file-loaded, before first frame renders
-local seek_on_load = nil
-mp.register_script_message("charlietv-seek", function(pos)
-    seek_on_load = tonumber(pos)
-end)
+-- Seek to offset and restore brightness in file-loaded.
+-- brightness is set to -100 before loadfile to hide the position-0 frame.
 mp.register_event("file-loaded", function()
-    if seek_on_load and seek_on_load > 0 then
-        mp.commandv("seek", seek_on_load, "absolute", "exact")
-        seek_on_load = nil
+    local fh = io.open("/tmp/charlietv3-seek", "r")
+    if fh then
+        local pos = tonumber(fh:read("*a"))
+        fh:close()
+        os.remove("/tmp/charlietv3-seek")
+        if pos and pos > 0 then
+            mp.commandv("seek", pos, "absolute", "exact")
+        end
     end
+    mp.add_timeout(0.20, function()
+        mp.set_property_number("brightness", 0)
+    end)
 end)
+

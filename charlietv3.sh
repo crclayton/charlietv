@@ -124,13 +124,14 @@ finally:
 " "$IPC" "$@" 2>/dev/null
 }
 
-# Load a new file into the running mpv instance
+# Load a new file into the running mpv instance.
+# Seek position is written to a file before loadfile is sent, so Lua can
+# read it in file-loaded with no IPC ordering dependency.
 play_channel() {
   local f="$1" channel="$2"
   local dur start s h m r rh rm duration_str remaining_str osd
 
-  echo "→ [$channel] $(basename "$f")"
-
+  echo "-> [$channel] $(basename "$f")"
   dur="$(duration_seconds "$f")"
   start="$(choose_start_offset "$f" "$dur")"
 
@@ -142,10 +143,11 @@ play_channel() {
   else
     remaining_str="unknown"
   fi
-  osd="Began ${duration_str} ago, ${remaining_str} remaining\nPress (ESC) to quit, ← and → to change channels, (SPACE) for more info"
+  osd="Began ${duration_str} ago, ${remaining_str} remaining"
 
+  echo "$start" > /tmp/charlietv3-seek
   mpv_send set_property osd-playing-msg "$osd"
-  mpv_send script-message-to charlietv3_keys charlietv-seek "$start"
+  mpv_send set_property brightness -100
   mpv_send script-message charlietv-channel "$channel"
   mpv_send loadfile "$f" replace
 }

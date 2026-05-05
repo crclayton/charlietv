@@ -1,4 +1,5 @@
 local channel = ""
+local channel_ov = nil
 
 mp.register_script_message("charlietv-channel", function(ch)
     channel = ch
@@ -6,10 +7,13 @@ end)
 
 mp.register_event("file-loaded", function()
     if channel == "" then return end
-    local ov = mp.create_osd_overlay("ass-events")
-    ov.data = "{\\an9\\fs24\\fnNimbus Sans\\c&H0596EB&\\bord1\\shad3\\3c&H000000&\\4c&H000000&}" .. channel
-    ov:update()
-    mp.add_timeout(5, function() ov:remove() end)
+    if channel_ov then channel_ov:remove() end
+    channel_ov = mp.create_osd_overlay("ass-events")
+    channel_ov.data = "{\\an9\\fs24\\fnNimbus Sans\\c&H0596EB&\\bord1\\shad3\\3c&H000000&\\4c&H000000&}Channel " .. channel
+    channel_ov:update()
+    mp.add_timeout(5, function()
+        if channel_ov then channel_ov:remove(); channel_ov = nil end
+    end)
 end)
 
 local info_ov = nil
