@@ -56,9 +56,11 @@ datestr="$(date '+%I:%M%p')"
 
 
 starttime="${2:-}"
+channel="${3:-}"
 full_movie="$(realpath "$movie")"
 movie_only="$(basename "$full_movie")"
 
+dur="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$movie" | cut -d. -f1)"
 
 # If it's in /New/, always start at 0
 if [[ "$full_movie" == *"/New/"* ]]; then
@@ -67,7 +69,6 @@ fi
 
 # If $2 not provided (and not forced to 0 above), pick a random start time
 if [[ -z "${starttime}" ]]; then
-  dur="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$movie" | cut -d. -f1)"
   if [[ -z "$dur" || "$dur" -le 0 ]]; then
     starttime=0
   else
@@ -76,6 +77,12 @@ if [[ -z "${starttime}" ]]; then
 fi
 
 s=$starttime; h=$((s/3600)); m=$(((s%3600)/60)); ((h)) && duration="${h}h${m}min" || duration="${m}min"
+
+if [[ -n "$dur" && "$dur" -gt "$starttime" ]]; then
+  r=$(( dur - starttime )); rh=$((r/3600)); rm=$(((r%3600)/60)); ((rh)) && remaining="${rh}h${rm}min" || remaining="${rm}min"
+else
+  remaining="unknown"
+fi
 
     #--osd-playing-msg="$datestr [$duration] $movie_only" \
 
@@ -95,7 +102,7 @@ s=$starttime; h=$((s/3600)); m=$(((s%3600)/60)); ((h)) && duration="${h}h${m}min
     --config-dir="." \
     --profile=norm \
     --start=$starttime \
-    --osd-playing-msg="$movie_only [Began $duration ago]\nPress (q) to quit, ← and → to change channels, (i) for more instructions" \
+    --osd-playing-msg="Began $duration ago, $remaining remaining\nPress (ESC) to quit, ← and → to change channels, (SPACE) for more info" \
     --osd-playing-msg-duration=5000 \
     --osd-font="Nimbus Sans" \
     --osd-font-size=24 \
@@ -123,6 +130,8 @@ s=$starttime; h=$((s/3600)); m=$(((s%3600)/60)); ((h)) && duration="${h}h${m}min
     --scripts=nextfile_and_rewind.lua \
     --scripts=nextfile.lua \
     --script=auto-nextfile.lua \
+    --script=channel_osd.lua \
+    --script-opts=channel_osd-channel="${channel}",channel_osd-duration=5 \
     --fullscreen #\
 
     #--secondary-sub-delay=0 \

@@ -159,21 +159,18 @@ function movetofile(forward)
     show_osd_message(memory)
   end
 
-    mp.register_event("file-loaded", function()
+    local handler
+    handler = function()
+        mp.unregister_event(handler)
         mp.commandv("seek", "0", "absolute")
-        -- mp.osd_message("New file", 10)  -- Adjust OSD display time as needed
-
         local filename = mp.get_property("filename")
         if forward then
             mp.set_property("osd-playing-msg", "Fuckin' JUMPED to the NEXT episode: " .. filename)
         else
             mp.set_property("osd-playing-msg", "Fuckin' ROLLED BACK to the PREVIOUS episode: " .. filename)
         end
-        -- mp.osd_message( "Fuckin' JUMPED to the next episode: " .. filename"", 10)  -- Adjust OSD display time as needed
-
-        -- Option 3: Force mpv to display whatever your standard osd-playing-msg is
-        -- mp.commandv("show-text", mp.get_property_osd("osd-playing-msg"))
-    end)
+    end
+    mp.register_event("file-loaded", handler)
 
 end
 

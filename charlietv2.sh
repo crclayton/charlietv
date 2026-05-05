@@ -15,6 +15,7 @@ w_movies=25 #33
 w_tv=50
 w_new=25 #33
 
+echo "CharlieTV initiated"
 
 # Anchor for "broadcast day" sync (10:00 AM local by default)
 ANCHOR_HOUR="${ANCHOR_HOUR:-10}"
@@ -79,7 +80,7 @@ _spinner() {
   local frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
   local i=0
   while true; do
-    printf "\r  %s  Indexing files..." "${frames[$((i % 10))]}"
+    printf "\r  %s  Detecting what's on CharlieTV today..." "${frames[$((i % 10))]}"
     sleep 0.1
     (( i++ )) || true
   done
@@ -275,7 +276,7 @@ start_current() {
   #echo "Start offset: ${start}s"
   #echo "(q=quit)"
 
-  CHARLIETV_START_SECONDS="$start" bash master.sh "$f" "$start" &
+  CHARLIETV_START_SECONDS="$start" bash master.sh "$f" "$start" "$((idx+1))/${#LINEUP[@]}" &
   PLAYER_PID=$!
 }
 
