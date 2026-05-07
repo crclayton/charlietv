@@ -47,5 +47,7 @@ check_videos_integrity() {
   (( bad == 0 ))
 }
 
-#check_videos_integrity "TV/" fast | tee check_tv.log
-check_videos_integrity "New/" fast | tee check_new.log
+check_videos_integrity "New/" fast    | tee check_new.log
+check_videos_integrity "Movies/" fast | tee check_movies.log
+check_videos_integrity "TV/" fast     | tee check_tv.log
+

@@ -41,7 +41,7 @@ days_since_epoch=$(( $(date +%s) / 86400 ))
 _spinner() {
   local frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏) i=0
   while true; do
-    printf "\r  %s  Detecting what's on CharlieTV today..." "${frames[$((i % 10))]}"
+    printf "\r  %s  Booting up CharlieTV!!!!! Checking what's on..." "${frames[$((i % 10))]}"
     sleep 0.1; (( i++ )) || true
   done
 }

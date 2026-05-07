@@ -35,7 +35,7 @@ mp.register_script_message("toggle-info", function()
             .. "\\N\\N\\N\\N\\N{\\c&H0596EB&}Playing: " .. filename .. "{\\c&HFFFFFF&}\\N\\N"
             .. "{\\c&H0596EB&}\\N\\N"
             .. " (← and →) change channels\\N"
-            .. " (INSERT) jump to beginning\\N(ENTER)  next channel\\N(ESC)    close\\N\\N"
+            .. " (INSERT) jump to beginning\\N(ENTER)  next channel\\N(q)      quit\\N\\N\\N"
             .. " (f) toggle fullscreen\\N"
             .. " (k) keep new movie, (del) remove file\\N\\N"
             .. " (7) and (9) jump chapters\\N(4) and (6) jump episodes\\N(1) and (3) jump time\\N"
