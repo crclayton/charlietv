@@ -82,7 +82,7 @@ echo "CharlieTV initiated — ${#LINEUP[@]} channels"
 
 # === Time offset helpers ===
 duration_seconds() {
-  ffprobe -v error -show_entries format=duration \
+  timeout 4 ffprobe -v error -show_entries format=duration \
     -of default=noprint_wrappers=1:nokey=1 "$1" 2>/dev/null \
     | awk '{printf("%d\n",$1+0.5)}'
 }
@@ -112,6 +112,7 @@ mpv_send() {
   python3 -c "
 import socket, json, sys
 sock = socket.socket(socket.AF_UNIX)
+sock.settimeout(2)
 try:
     sock.connect(sys.argv[1])
     cmd = []
@@ -143,7 +144,14 @@ play_channel() {
   else
     remaining_str="unknown"
   fi
-  osd="Began ${duration_str} ago, ${remaining_str} remaining"
+  began_epoch=$(( $(date +%s) - start ))
+  began_min=$(date -d "@$began_epoch" +"%M")
+  if [[ "$began_min" == "00" ]]; then
+    began_time=$(date -d "@$began_epoch" +"%-I%p")
+  else
+    began_time=$(date -d "@$began_epoch" +"%-I:%M%p")
+  fi
+  osd="Began ${duration_str} ago (${began_time}), ${remaining_str} remaining"
 
   echo "$start" > /tmp/charlietv3-seek
   mpv_send set_property osd-playing-msg "$osd"

@@ -1,5 +1,5 @@
 local fifo = "/tmp/charlietv3-cmd"
-
+local channel_change_time = 0.25
 local function send(cmd)
     local f = io.open(fifo, "w")
     if f then f:write(cmd .. "\n"); f:close() end
@@ -23,8 +23,11 @@ mp.register_event("file-loaded", function()
         if pos and pos > 0 then
             mp.commandv("seek", pos, "absolute", "exact")
         end
+        -- Signal to episode-skip handlers that charlietv3 owns this load
+        local mf = io.open("/tmp/charlietv3-channel-loaded", "w")
+        if mf then mf:write("1"); mf:close() end
     end
-    mp.add_timeout(0.20, function()
+    mp.add_timeout(channel_change_time, function()
         mp.set_property_number("brightness", 0)
     end)
 end)

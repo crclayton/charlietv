@@ -106,6 +106,10 @@ function movetofile(forward)
   local relpath = mp.get_property('path')
   if not pwd or not relpath then return end
 
+  -- Clear any pending charlietv3 channel-seek so it doesn't apply to this episode load
+  os.remove("/tmp/charlietv3-seek")
+  os.remove("/tmp/charlietv3-channel-loaded")
+
   local path = utils.join_path(pwd, relpath)
   local filename = mp.get_property("filename")
   local dir = utils.split_path(path)
@@ -162,7 +166,14 @@ function movetofile(forward)
     local handler
     handler = function()
         mp.unregister_event(handler)
-        mp.commandv("seek", "0", "absolute")
+        -- Don't seek to 0 if charlietv3 loaded this file with its own offset
+        local cf = io.open("/tmp/charlietv3-channel-loaded", "r")
+        if cf then
+            cf:close()
+            os.remove("/tmp/charlietv3-channel-loaded")
+        else
+            mp.commandv("seek", "0", "absolute")
+        end
         local filename = mp.get_property("filename")
         if forward then
             mp.set_property("osd-playing-msg", "Fuckin' JUMPED to the NEXT episode: " .. filename)
