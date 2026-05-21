@@ -9,6 +9,7 @@ IPC=/tmp/charlietv3-ipc
     --no-terminal \
     --msg-level=all=no \
     --display-tags-clr \
+    --no-input-default-bindings \
     --vo=gpu-next \
     --video-sync=display-resample \
     --input-conf="input3.conf" \
@@ -47,4 +48,5 @@ IPC=/tmp/charlietv3-ipc
     --script=auto-nextfile.lua \
     --script=eofnotify3.lua \
     --script=charlietv3_keys.lua \
+    --script=double_press.lua \
     --fullscreen

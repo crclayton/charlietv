@@ -4,9 +4,10 @@ FIFO=/tmp/charlietv3-cmd
 IPC=/tmp/charlietv3-ipc
 
 total=25
-w_movies=25
-w_tv=50
-w_new=25
+
+w_movies=30
+w_tv=55
+w_new=15
 
 ANCHOR_HOUR="${ANCHOR_HOUR:-10}"
 ANCHOR_MIN="${ANCHOR_MIN:-0}"
