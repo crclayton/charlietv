@@ -4,12 +4,12 @@ movie="$1"
 starttime="${2:-0}"
 IPC=/tmp/charlietv3-ipc
 
+    #--no-input-default-bindings \
 ./mpv.AppImage "$movie" \
     --really-quiet \
     --no-terminal \
     --msg-level=all=no \
     --display-tags-clr \
-    --no-input-default-bindings \
     --vo=gpu-next \
     --video-sync=display-resample \
     --input-conf="input3.conf" \
