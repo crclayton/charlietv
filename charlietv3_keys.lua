@@ -9,6 +9,7 @@ mp.add_key_binding(nil, "tv-next",   function() send("next") end)
 mp.add_key_binding(nil, "tv-quit",   function() send("quit") end)
 mp.add_key_binding(nil, "tv-delete", function() send("delete") end)
 mp.add_key_binding(nil, "tv-save",   function() send("save") end)
+mp.add_key_binding(nil, "tv-random", function() send("random") end)
 
 mp.register_event("file-loaded", function()
     local fh = io.open("/tmp/charlietv3-seek", "r")
