@@ -5,17 +5,31 @@ IPC=/tmp/charlietv3-ipc
 
 total=25
 
-w_movies=30
-w_tv=55
-w_new=15
-
 ANCHOR_HOUR="${ANCHOR_HOUR:-10}"
 ANCHOR_MIN="${ANCHOR_MIN:-0}"
 
+CHARLIETV_LAYOUT="qwerty"
+args=()
+for arg in "$@"; do
+  if [[ "$arg" == "--dvorak" ]]; then
+    CHARLIETV_LAYOUT="dvorak"
+  else
+    args+=("$arg")
+  fi
+done
+set -- "${args[@]}"
+export CHARLIETV_LAYOUT
+
 if [ $# -eq 0 ]; then
   TVROOT="./TV"; MOVIEROOT="./Movies"; NEWROOT="./New"
+  w_tv=55
+  w_movies=30
+  w_new=15
 else
   TVROOT="$1"; MOVIEROOT="$1"; NEWROOT="$1"
+  w_tv=100
+  w_movies=0
+  w_new=0
 fi
 
 re='.*\.(mp4|mkv|avi|mov|wmv|flv|webm|mpg|mpeg|m4v|3gp|ts|vob|ogv)$'
@@ -130,12 +144,16 @@ finally:
 # Seek position is written to a file before loadfile is sent, so Lua can
 # read it in file-loaded with no IPC ordering dependency.
 play_channel() {
-  local f="$1" channel="$2"
+  local f="$1" channel="$2" forced_start="${3:-}"
   local dur start s h m r rh rm duration_str remaining_str osd
 
   echo "-> [$channel] $(basename "$f")"
   dur="$(duration_seconds "$f")"
-  start="$(choose_start_offset "$f" "$dur")"
+  if [[ -n "$forced_start" ]]; then
+    start="$forced_start"
+  else
+    start="$(choose_start_offset "$f" "$dur")"
+  fi
 
   s=$start; h=$((s/3600)); m=$(((s%3600)/60))
   (( h )) && duration_str="${h}h${m}min" || duration_str="${m}min"
@@ -219,6 +237,25 @@ while true; do
         [[ "${#LINEUP[@]}" -eq 0 ]] && exit 0
         idx=$(( idx % ${#LINEUP[@]} ))
         play_channel "${LINEUP[$idx]}" "$((idx+1))/${#LINEUP[@]}"
+        ;;
+      random)
+        f="${LINEUP[$idx]}"
+        dir="$(dirname -- "$f")"
+        mapfile -d '' candidates < <(
+          find "$dir" -maxdepth 1 -type f -regextype posix-extended -iregex "$re" -print0
+        )
+        if [[ "${#candidates[@]}" -gt 1 ]]; then
+          others=()
+          for c in "${candidates[@]}"; do
+            [[ "$c" == "$f" ]] || others+=("$c")
+          done
+          candidates=("${others[@]}")
+        fi
+        if [[ "${#candidates[@]}" -gt 0 ]]; then
+          pick="${candidates[$RANDOM % ${#candidates[@]}]}"
+          LINEUP[$idx]="$pick"
+          play_channel "$pick" "$((idx+1))/${#LINEUP[@]}" 0
+        fi
         ;;
     esac
   else
