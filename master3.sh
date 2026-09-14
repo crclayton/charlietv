@@ -4,6 +4,12 @@ movie="$1"
 starttime="${2:-0}"
 IPC=/tmp/charlietv3-ipc
 
+if [[ "${CHARLIETV_LAYOUT:-qwerty}" == "dvorak" ]]; then
+  INPUT_CONF="input3_dvorak.conf"
+else
+  INPUT_CONF="input3.conf"
+fi
+
 #--no-input-default-bindings \
 ./mpv.AppImage "$movie" \
     --really-quiet \
@@ -12,7 +18,7 @@ IPC=/tmp/charlietv3-ipc
     --display-tags-clr \
     --vo=gpu-next \
     --video-sync=display-resample \
-    --input-conf="input3.conf" \
+    --input-conf="$INPUT_CONF" \
     --config-dir="." \
     --profile=norm \
     --start="$starttime" \

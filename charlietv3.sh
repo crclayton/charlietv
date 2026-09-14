@@ -8,6 +8,18 @@ total=25
 ANCHOR_HOUR="${ANCHOR_HOUR:-10}"
 ANCHOR_MIN="${ANCHOR_MIN:-0}"
 
+CHARLIETV_LAYOUT="qwerty"
+args=()
+for arg in "$@"; do
+  if [[ "$arg" == "--dvorak" ]]; then
+    CHARLIETV_LAYOUT="dvorak"
+  else
+    args+=("$arg")
+  fi
+done
+set -- "${args[@]}"
+export CHARLIETV_LAYOUT
+
 if [ $# -eq 0 ]; then
   TVROOT="./TV"; MOVIEROOT="./Movies"; NEWROOT="./New"
   w_tv=55

@@ -28,6 +28,12 @@ local function clock_str()
     end
 end
 
+-- OSD always shows the qwerty key labels, even under --dvorak, since
+-- that's the layout printed on the keycaps.
+local fullscreen_key = "f"
+local save_key       = "v"
+local dtap_key       = ";"
+
 local function show_info()
     if info_ov then info_ov:remove() end
     info_ov = mp.create_osd_overlay("ass-events")
@@ -52,9 +58,9 @@ local function show_info()
         .. "(ENTER)   next channel                                                                |       ^       |\\N"
         .. "(q)       quit                                                                        | -ch <   > +ch |\\N"
         .. "\\h                                                                                     |       v       |\\N"
-        .. " (f) toggle fullscreen                                                                 |     -vol      |\\N"
-        .. " (s) spare                                                                             |               |\\N"
-        .. " (k) keep new movie, (del) remove file                                                 |    [pause]    |\\N"
+        .. " (" .. fullscreen_key .. ") toggle fullscreen                                                                 |     -vol      |\\N"
+        .. " (" .. dtap_key .. ") previous file, (" .. dtap_key .. dtap_key .. ") next file                                                     |               |\\N"
+        .. " (" .. save_key .. ") keep new movie, (del) remove file                                                 |    [pause]    |\\N"
         .. "\\h                                                                                     |   [restart]   |\\N"
         .. "(7) and (9) jump chapters                                                             |               |\\N"
         .. "(4) and (6) jump files                                                                | -file  +file  |\\N"
