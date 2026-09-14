@@ -5,7 +5,6 @@ starttime="${2:-0}"
 IPC=/tmp/charlietv3-ipc
 
 #--no-input-default-bindings \
-
 ./mpv.AppImage "$movie" \
     --really-quiet \
     --no-terminal \
