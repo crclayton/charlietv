@@ -56,7 +56,6 @@ days_since_epoch=$(( $(date +%s) / 86400 ))
 # Lineup is saved here (off the drive) so a crash/rerun resumes the same channels.
 # Deleted on a clean quit; ignored if it's from another day or other arguments.
 STATE=/tmp/charlietv3-state
-ROOT="$(pwd -P)"
 STATE_KEY="$*"
 idx=0
 LINEUP=()
@@ -238,39 +237,11 @@ play_channel() {
   mpv_send loadfile "$f" replace
 }
 
-# === Drive recovery ===
-# If the drive drops out, our working directory goes stale (I/O errors on every
-# relative path) and mpv, which runs from the drive, can crash. These helpers
-# re-find the drive when it comes back and restart mpv on the current channel.
-NEED_RESTART=0
-
-# Rewrite absolute paths if the drive came back under a different mount point.
-remap_root() {
-  local new="$1" i
-  for i in "${!LINEUP[@]}"; do
-    [[ "${LINEUP[$i]}" == "$ROOT/"* ]] && LINEUP[$i]="$new/${LINEUP[$i]#"$ROOT/"}"
-  done
-  for v in TVROOT MOVIEROOT NEWROOT; do
-    [[ "${!v}" == "$ROOT/"* ]] && printf -v "$v" '%s' "$new/${!v#"$ROOT/"}"
-  done
-  ROOT="$new"
+# Switch to LINEUP[idx].
+tune() {
+  save_state
+  play_channel "${LINEUP[$idx]}" "$((idx+1))/${#LINEUP[@]}" "$@"
 }
-
-# Succeeds (and cd's there) if the drive is mounted and readable.
-find_root() {
-  local d src
-  for d in "$ROOT" "${ROOT%/*}"/*; do
-    [[ -f "$d/master3.sh" && -f "$d/charlietv3.sh" ]] || continue
-    src="$(findmnt -n -o SOURCE --target "$d" 2>/dev/null)"
-    [[ "$src" != /dev/* || -b "$src" ]] || continue
-    cd "$d" 2>/dev/null && head -c1 master3.sh >/dev/null 2>&1 || continue
-    [[ "$d" != "$ROOT" ]] && remap_root "$d"
-    return 0
-  done
-  return 1
-}
-
-drive_ok() { find_root && head -c1 -- "${LINEUP[$idx]}" >/dev/null 2>&1; }
 
 kill_tree() {
   local c
@@ -280,10 +251,10 @@ kill_tree() {
 
 # (Re)launch mpv on the current channel.
 start_player() {
-  local f="${LINEUP[$idx]}" start="${1:-}"
+  local f="${LINEUP[$idx]}" start
   [[ -n "$PLAYER_PID" ]] && { kill_tree "$PLAYER_PID"; PLAYER_PID=""; }
   rm -f "$IPC" /tmp/charlietv3-seek
-  [[ -z "$start" ]] && start="$(choose_start_offset "$f")"
+  start="$(choose_start_offset "$f")"
   echo "-> [$((idx+1))/${#LINEUP[@]}] $(basename "$f")"
   bash master3.sh "$f" "$start" &
   PLAYER_PID=$!
@@ -291,40 +262,15 @@ start_player() {
     [[ -S "$IPC" ]] && break
     sleep 0.1
   done
-  if [[ ! -S "$IPC" ]]; then NEED_RESTART=1; return 1; fi
-  NEED_RESTART=0
+  [[ -S "$IPC" ]] || return 1
   HUNG=0; STALLED=0; LAST_POS=""
   mpv_send script-message charlietv-channel "$((idx+1))/${#LINEUP[@]}"
 }
 
-# Switch to LINEUP[idx]; recovers the drive/player first if needed.
-tune() {
-  save_state
-  if ! drive_ok; then
-    echo "!! Drive unavailable — waiting for it to reconnect"
-    NEED_RESTART=1
-    mpv_send show-text "NO SIGNAL — reconnect the drive" 4000
-    return
-  fi
-  if (( NEED_RESTART )); then
-    echo "Drive is back — restarting player"
-    start_player "$@"
-  else
-    play_channel "${LINEUP[$idx]}" "$((idx+1))/${#LINEUP[@]}" "$@"
-  fi
-}
-
-# === Setup ===
-rm -f "$FIFO" "$IPC"
-mkfifo "$FIFO"
-exec 3<>"$FIFO"   # keep fifo open for both ends so reads never get EOF
-
-PLAYER_PID=""
-HUNG=0; STALLED=0; LAST_POS=""
-
 # Watchdog: mpv sometimes freezes switching files at the end of an episode
 # (picture stuck, "mpv stopped responding"). Succeeds if it looks frozen —
 # not answering IPC, or playing (not paused/buffering) with time-pos stuck.
+HUNG=0; STALLED=0; LAST_POS=""
 player_frozen() {
   local out pos idle
   if ! out="$(mpv_get time-pos core-idle)"; then
@@ -341,13 +287,20 @@ player_frozen() {
   return 1
 }
 
+# === Setup ===
+rm -f "$FIFO" "$IPC"
+mkfifo "$FIFO"
+exec 3<>"$FIFO"   # keep fifo open for both ends so reads never get EOF
+
+PLAYER_PID=""
 cleanup() {
   mpv_send quit
-  [[ -n "$PLAYER_PID" ]] && { pkill -TERM -P "$PLAYER_PID" 2>/dev/null; kill "$PLAYER_PID" 2>/dev/null; wait "$PLAYER_PID" 2>/dev/null || true; }
+  [[ -n "$PLAYER_PID" ]] && kill_tree "$PLAYER_PID"
   rm -f "$FIFO"
   stty sane 2>/dev/null || true
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT TERM
 
 start_player || { echo "mpv failed to start"; exit 1; }
 
@@ -356,12 +309,8 @@ while true; do
   if IFS= read -r -t 2 cmd <&3; then
     case "$cmd" in
       next|prev)
-        # While recovering from a dropped drive, stay on the same channel —
-        # the keypress (or mpv's EOF on the failed read) just triggers the retry.
-        if (( ! NEED_RESTART )) && drive_ok; then
-          [[ "$cmd" == next ]] && step=1 || step=-1
-          idx=$(( (idx + step + ${#LINEUP[@]}) % ${#LINEUP[@]} ))
-        fi
+        [[ "$cmd" == next ]] && step=1 || step=-1
+        idx=$(( (idx + step + ${#LINEUP[@]}) % ${#LINEUP[@]} ))
         tune
         ;;
       quit)
@@ -405,25 +354,11 @@ while true; do
         ;;
     esac
   else
-    # Timeout — check mpv is still alive and the drive is still there.
-    if [[ -n "$PLAYER_PID" ]] && ! kill -0 "$PLAYER_PID" 2>/dev/null; then
-      wait "$PLAYER_PID" 2>/dev/null; status=$?
-      PLAYER_PID=""
-      # Window closed normally with the drive fine → treat as quit.
-      if (( status == 0 && ! NEED_RESTART )) && drive_ok; then rm -f "$STATE"; exit 0; fi
-      echo "!! Player stopped (status $status) — will restart when the drive is readable"
-      NEED_RESTART=1
-    elif (( ! NEED_RESTART )) && ! find_root; then
-      echo "!! Drive disconnected — waiting for it to reconnect"
-      NEED_RESTART=1
-    elif (( ! NEED_RESTART )) && [[ -n "$PLAYER_PID" ]] && player_frozen; then
+    # Timeout — mpv window gone means quit, as before.
+    kill -0 "$PLAYER_PID" 2>/dev/null || { rm -f "$STATE"; exit 0; }
+    if player_frozen; then
       echo "!! mpv froze — restarting player"
-      NEED_RESTART=1
-    fi
-    # Auto-recover as soon as the drive is back (a channel change also triggers this).
-    if (( NEED_RESTART )) && drive_ok; then
-      echo "Drive is back — restarting player"
-      start_player
+      start_player || { echo "mpv failed to restart"; exit 1; }
     fi
   fi
 done
