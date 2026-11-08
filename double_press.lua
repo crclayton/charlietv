@@ -6,9 +6,9 @@ local mp = require 'mp'
 local TIMEOUT = 0.3       -- seconds to wait for a second press
 local POST_DOUBLE_GRACE = TIMEOUT * 2  -- suppress single if it fires within this long after a double
 
--- Keys below are given as the physical positions used by charlietv3.sh's
+-- Keys below are given as the physical positions used by charlietv4.sh's
 -- default (QWERTY) input3.conf. Under --dvorak, the same physical keys type
--- different characters, so the layout picked in charlietv3.sh (passed via
+-- different characters, so the layout picked in charlietv4.sh (passed via
 -- the CHARLIETV_LAYOUT env var) selects the matching characters here.
 local LAYOUT = os.getenv("CHARLIETV_LAYOUT") or "qwerty"
 local next_prev_key, restart_key
