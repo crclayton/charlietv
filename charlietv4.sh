@@ -53,6 +53,28 @@ read -r n_movies n_tv n_new < <(
 
 days_since_epoch=$(( $(date +%s) / 86400 ))
 
+# Lineup is saved here (off the drive) so a crash/rerun resumes the same channels.
+# Deleted on a clean quit; ignored if it's from another day or other arguments.
+STATE=/tmp/charlietv3-state
+STATE_KEY="$*"
+idx=0
+LINEUP=()
+
+if [[ -r "$STATE" ]]; then
+  mapfile -d '' saved < "$STATE"
+  if [[ "${saved[0]}" == "$days_since_epoch" && "${saved[1]}" == "$STATE_KEY" && "${#saved[@]}" -gt 3 ]]; then
+    idx="${saved[2]}"
+    LINEUP=("${saved[@]:3}")
+    echo "Resuming previous CharlieTV lineup (run with no state: rm $STATE)"
+  fi
+fi
+
+save_state() {
+  printf '%s\0' "$days_since_epoch" "$STATE_KEY" "$idx" "${LINEUP[@]}" > "$STATE" 2>/dev/null
+}
+
+if [ "${#LINEUP[@]}" -eq 0 ]; then
+
 _spinner() {
   local frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏) i=0
   while true; do
@@ -92,7 +114,11 @@ mapfile -d '' LINEUP < <(
 kill "$SPINNER_PID" 2>/dev/null; wait "$SPINNER_PID" 2>/dev/null || true
 printf "\r\033[K"
 
+fi
+
 if [ "${#LINEUP[@]}" -eq 0 ]; then echo "No playable files found."; exit 1; fi
+(( idx < ${#LINEUP[@]} )) || idx=0
+save_state
 echo "CharlieTV initiated — ${#LINEUP[@]} channels"
 
 # === Time offset helpers ===
@@ -107,19 +133,45 @@ offset_since_even_hour() {
   anchor_h=$((10#$h / 2 * 2))
   echo $(( (10#$h - anchor_h)*3600 + 10#$m*60 + 10#$s ))
 }
-offset_since_hour()      { local m s; m=$(date +%M); s=$(date +%S); echo $((10#$m*60 + 10#$s)); }
-offset_since_half_hour() { local m s; m=$(date +%M); s=$(date +%S); echo $(((10#$m % 30)*60 + 10#$s)); }
+# Seconds since the most recent ANCHOR_HOUR:ANCHOR_MIN.
+offset_since_anchor() {
+  local now anchor
+  now=$(date +%s)
+  anchor=$(date -d "today $ANCHOR_HOUR:$ANCHOR_MIN" +%s)
+  (( anchor > now )) && anchor=$(( anchor - 86400 ))
+  echo $(( now - anchor ))
+}
 
-choose_start_offset() {
-  local f="$1" dur="${2:-}" off
-  [[ "$(realpath "$f")" == *"/New/"* ]] && { echo 15; return; }
-  [[ -z "$dur" ]] && dur="$(duration_seconds "$f")"
-  [[ -z "$dur" || "$dur" -le 0 ]] && { offset_since_even_hour; return; }
-  if   (( dur < 1800 )); then off="$(offset_since_half_hour)"
-  elif (( dur < 3600 )); then off="$(offset_since_hour)"
-  else                        off="$(offset_since_even_hour)"
-  fi
-  echo $(( off % dur ))
+# Next video after $1 in its folder (same order as nextfile.lua), wrapping.
+next_in_dir() {
+  local f="$1" files i
+  mapfile -d '' files < <(
+    find "$(dirname -- "$f")" -maxdepth 1 -type f -regextype posix-extended -iregex "$re" -print0 2>/dev/null | sort -zV
+  )
+  for i in "${!files[@]}"; do
+    [[ "${files[$i]}" == "$f" ]] && { echo "${files[$(( (i + 1) % ${#files[@]} ))]}"; return; }
+  done
+  echo "$f"
+}
+
+# Work out what a channel is showing right now, like a TV schedule: from the
+# anchor, each file airs in back-to-back slots of its length rounded up to the
+# half hour, so everything starts on :00/:30 and keeps advancing while you're
+# on another channel. If this airing already ended inside its slot, it's the
+# next file in the folder, as if it started when this one finished.
+# Sets SCHED_FILE, SCHED_START, SCHED_DUR.
+schedule() {
+  local f="$1" dur slot pos nf ndur
+  dur="$(duration_seconds "$f")"
+  SCHED_FILE="$f"; SCHED_DUR="$dur"
+  if [[ -z "$dur" || "$dur" -le 0 ]]; then SCHED_START="$(offset_since_even_hour)"; return; fi
+  slot=$(( (dur + 1799) / 1800 * 1800 ))
+  pos=$(( $(offset_since_anchor) % slot ))
+  if (( pos < dur )); then SCHED_START=$pos; return; fi
+  nf="$(next_in_dir "$f")"; ndur="$(duration_seconds "$nf")"
+  pos=$(( pos - dur ))
+  [[ -n "$ndur" && "$ndur" -gt 0 ]] && pos=$(( pos % ndur ))
+  SCHED_FILE="$nf"; SCHED_DUR="$ndur"; SCHED_START=$pos
 }
 
 # === IPC: send a JSON command to mpv ===
@@ -140,6 +192,35 @@ finally:
 " "$IPC" "$@" 2>/dev/null
 }
 
+# Query mpv properties; prints one JSON value per line (null if unavailable).
+# Fails if mpv doesn't answer within 3s — i.e. it's hung.
+mpv_get() {
+  python3 -c "
+import socket, json, sys
+sock = socket.socket(socket.AF_UNIX)
+sock.settimeout(3)
+props = sys.argv[2:]
+try:
+    sock.connect(sys.argv[1])
+    for i, p in enumerate(props):
+        sock.sendall(json.dumps({'command': ['get_property', p], 'request_id': i + 1}).encode() + b'\n')
+    got, buf = {}, b''
+    while len(got) < len(props):
+        chunk = sock.recv(4096)
+        if not chunk: sys.exit(1)
+        buf += chunk
+        while b'\n' in buf:
+            line, buf = buf.split(b'\n', 1)
+            m = json.loads(line)
+            if m.get('request_id'): got[m['request_id']] = m.get('data')
+    for i in range(len(props)): print(json.dumps(got[i + 1]))
+except Exception:
+    sys.exit(1)
+finally:
+    sock.close()
+" "$IPC" "$@" 2>/dev/null
+}
+
 # Load a new file into the running mpv instance.
 # Seek position is written to a file before loadfile is sent, so Lua can
 # read it in file-loaded with no IPC ordering dependency.
@@ -147,13 +228,12 @@ play_channel() {
   local f="$1" channel="$2" forced_start="${3:-}"
   local dur start s h m r rh rm duration_str remaining_str osd
 
-  echo "-> [$channel] $(basename "$f")"
-  dur="$(duration_seconds "$f")"
   if [[ -n "$forced_start" ]]; then
-    start="$forced_start"
+    dur="$(duration_seconds "$f")"; start="$forced_start"
   else
-    start="$(choose_start_offset "$f" "$dur")"
+    schedule "$f"; f="$SCHED_FILE"; dur="$SCHED_DUR"; start="$SCHED_START"
   fi
+  echo "-> [$channel] $(basename "$f")"
 
   s=$start; h=$((s/3600)); m=$(((s%3600)/60))
   (( h )) && duration_str="${h}h${m}min" || duration_str="${m}min"
@@ -179,6 +259,56 @@ play_channel() {
   mpv_send loadfile "$f" replace
 }
 
+# Switch to LINEUP[idx].
+tune() {
+  save_state
+  play_channel "${LINEUP[$idx]}" "$((idx+1))/${#LINEUP[@]}" "$@"
+}
+
+kill_tree() {
+  local c
+  for c in $(pgrep -P "$1"); do kill_tree "$c"; done
+  kill -9 "$1" 2>/dev/null
+}
+
+# (Re)launch mpv on the current channel.
+start_player() {
+  local f="${LINEUP[$idx]}" start
+  [[ -n "$PLAYER_PID" ]] && { kill_tree "$PLAYER_PID"; PLAYER_PID=""; }
+  rm -f "$IPC" /tmp/charlietv3-seek
+  schedule "$f"; f="$SCHED_FILE"; start="$SCHED_START"
+  echo "-> [$((idx+1))/${#LINEUP[@]}] $(basename "$f")"
+  bash master3.sh "$f" "$start" &
+  PLAYER_PID=$!
+  for i in $(seq 1 100); do
+    [[ -S "$IPC" ]] && break
+    sleep 0.1
+  done
+  [[ -S "$IPC" ]] || return 1
+  HUNG=0; STALLED=0; LAST_POS=""
+  mpv_send script-message charlietv-channel "$((idx+1))/${#LINEUP[@]}"
+}
+
+# Watchdog: mpv sometimes freezes switching files at the end of an episode
+# (picture stuck, "mpv stopped responding"). Succeeds if it looks frozen —
+# not answering IPC, or playing (not paused/buffering) with time-pos stuck.
+HUNG=0; STALLED=0; LAST_POS=""
+player_frozen() {
+  local out pos idle
+  if ! out="$(mpv_get time-pos core-idle)"; then
+    (( ++HUNG >= 3 )); return
+  fi
+  HUNG=0
+  { read -r pos; read -r idle; } <<< "$out"
+  if [[ "$idle" == false && "$pos" != null && "$pos" == "$LAST_POS" ]]; then
+    (( ++STALLED >= 5 )) && return 0
+  else
+    STALLED=0
+  fi
+  LAST_POS="$pos"
+  return 1
+}
+
 # === Setup ===
 rm -f "$FIFO" "$IPC"
 mkfifo "$FIFO"
@@ -187,62 +317,50 @@ exec 3<>"$FIFO"   # keep fifo open for both ends so reads never get EOF
 PLAYER_PID=""
 cleanup() {
   mpv_send quit
-  [[ -n "$PLAYER_PID" ]] && { pkill -TERM -P "$PLAYER_PID" 2>/dev/null; kill "$PLAYER_PID" 2>/dev/null; wait "$PLAYER_PID" 2>/dev/null || true; }
+  [[ -n "$PLAYER_PID" ]] && kill_tree "$PLAYER_PID"
   rm -f "$FIFO"
   stty sane 2>/dev/null || true
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT TERM
 
-idx=0
-first_start="$(choose_start_offset "${LINEUP[$idx]}")"
-bash master3.sh "${LINEUP[$idx]}" "$first_start" &
-PLAYER_PID=$!
-
-# Wait for IPC socket to appear (up to 3s)
-for i in $(seq 1 30); do
-  [[ -S "$IPC" ]] && break
-  sleep 0.1
-done
-if [[ ! -S "$IPC" ]]; then echo "mpv failed to start"; exit 1; fi
-
-mpv_send script-message charlietv-channel "$((idx+1))/${#LINEUP[@]}"
+start_player || { echo "mpv failed to start"; exit 1; }
 
 # === Main loop ===
 while true; do
   if IFS= read -r -t 2 cmd <&3; then
     case "$cmd" in
-      next)
-        idx=$(( (idx + 1) % ${#LINEUP[@]} ))
-        play_channel "${LINEUP[$idx]}" "$((idx+1))/${#LINEUP[@]}"
-        ;;
-      prev)
-        idx=$(( (idx - 1 + ${#LINEUP[@]}) % ${#LINEUP[@]} ))
-        play_channel "${LINEUP[$idx]}" "$((idx+1))/${#LINEUP[@]}"
+      next|prev)
+        [[ "$cmd" == next ]] && step=1 || step=-1
+        idx=$(( (idx + step + ${#LINEUP[@]}) % ${#LINEUP[@]} ))
+        tune
         ;;
       quit)
+        rm -f "$STATE"
         exit 0
         ;;
       delete)
         f="${LINEUP[$idx]}"
         rm -f -- "$f" && echo "Deleted: $(basename "$f")" || echo "Delete failed: $f" >&2
         LINEUP=("${LINEUP[@]:0:$idx}" "${LINEUP[@]:$((idx+1))}")
-        [[ "${#LINEUP[@]}" -eq 0 ]] && exit 0
+        [[ "${#LINEUP[@]}" -eq 0 ]] && { rm -f "$STATE"; exit 0; }
         idx=$(( idx % ${#LINEUP[@]} ))
-        play_channel "${LINEUP[$idx]}" "$((idx+1))/${#LINEUP[@]}"
+        tune
         ;;
       save)
         f="${LINEUP[$idx]}"
-        [[ "$(realpath "$f")" == *"/New/"* ]] && { echo "Saving $(basename "$f")"; mv -- "$f" "$MOVIEROOT/"; }
+        [[ "$(realpath "$f" 2>/dev/null)" == *"/New/"* ]] || continue
+        echo "Saving $(basename "$f")"; mv -- "$f" "$MOVIEROOT/"
         LINEUP=("${LINEUP[@]:0:$idx}" "${LINEUP[@]:$((idx+1))}")
-        [[ "${#LINEUP[@]}" -eq 0 ]] && exit 0
+        [[ "${#LINEUP[@]}" -eq 0 ]] && { rm -f "$STATE"; exit 0; }
         idx=$(( idx % ${#LINEUP[@]} ))
-        play_channel "${LINEUP[$idx]}" "$((idx+1))/${#LINEUP[@]}"
+        tune
         ;;
       random)
         f="${LINEUP[$idx]}"
         dir="$(dirname -- "$f")"
         mapfile -d '' candidates < <(
-          find "$dir" -maxdepth 1 -type f -regextype posix-extended -iregex "$re" -print0
+          find "$dir" -maxdepth 1 -type f -regextype posix-extended -iregex "$re" -print0 2>/dev/null
         )
         if [[ "${#candidates[@]}" -gt 1 ]]; then
           others=()
@@ -252,14 +370,17 @@ while true; do
           candidates=("${others[@]}")
         fi
         if [[ "${#candidates[@]}" -gt 0 ]]; then
-          pick="${candidates[$RANDOM % ${#candidates[@]}]}"
-          LINEUP[$idx]="$pick"
-          play_channel "$pick" "$((idx+1))/${#LINEUP[@]}" 0
+          LINEUP[$idx]="${candidates[$RANDOM % ${#candidates[@]}]}"
+          tune 0
         fi
         ;;
     esac
   else
-    # Timeout — check mpv is still alive
-    kill -0 "$PLAYER_PID" 2>/dev/null || exit 0
+    # Timeout — mpv window gone means quit, as before.
+    kill -0 "$PLAYER_PID" 2>/dev/null || { rm -f "$STATE"; exit 0; }
+    if player_frozen; then
+      echo "!! mpv froze — restarting player"
+      start_player || { echo "mpv failed to restart"; exit 1; }
+    fi
   fi
 done
