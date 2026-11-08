@@ -133,9 +133,7 @@ offset_since_even_hour() {
   anchor_h=$((10#$h / 2 * 2))
   echo $(( (10#$h - anchor_h)*3600 + 10#$m*60 + 10#$s ))
 }
-# Seconds since the most recent ANCHOR_HOUR:ANCHOR_MIN. Measuring from one
-# fixed point (rather than the latest half/whole hour) means a channel's
-# position keeps advancing with the clock instead of snapping back each block.
+# Seconds since the most recent ANCHOR_HOUR:ANCHOR_MIN.
 offset_since_anchor() {
   local now anchor
   now=$(date +%s)
@@ -144,11 +142,36 @@ offset_since_anchor() {
   echo $(( now - anchor ))
 }
 
-choose_start_offset() {
-  local f="$1" dur="${2:-}"
-  [[ -z "$dur" ]] && dur="$(duration_seconds "$f")"
-  [[ -z "$dur" || "$dur" -le 0 ]] && { offset_since_even_hour; return; }
-  echo $(( $(offset_since_anchor) % dur ))
+# Next video after $1 in its folder (same order as nextfile.lua), wrapping.
+next_in_dir() {
+  local f="$1" files i
+  mapfile -d '' files < <(
+    find "$(dirname -- "$f")" -maxdepth 1 -type f -regextype posix-extended -iregex "$re" -print0 2>/dev/null | sort -zV
+  )
+  for i in "${!files[@]}"; do
+    [[ "${files[$i]}" == "$f" ]] && { echo "${files[$(( (i + 1) % ${#files[@]} ))]}"; return; }
+  done
+  echo "$f"
+}
+
+# Work out what a channel is showing right now, like a TV schedule: from the
+# anchor, each file airs in back-to-back slots of its length rounded up to the
+# half hour, so everything starts on :00/:30 and keeps advancing while you're
+# on another channel. If this airing already ended inside its slot, it's the
+# next file in the folder, as if it started when this one finished.
+# Sets SCHED_FILE, SCHED_START, SCHED_DUR.
+schedule() {
+  local f="$1" dur slot pos nf ndur
+  dur="$(duration_seconds "$f")"
+  SCHED_FILE="$f"; SCHED_DUR="$dur"
+  if [[ -z "$dur" || "$dur" -le 0 ]]; then SCHED_START="$(offset_since_even_hour)"; return; fi
+  slot=$(( (dur + 1799) / 1800 * 1800 ))
+  pos=$(( $(offset_since_anchor) % slot ))
+  if (( pos < dur )); then SCHED_START=$pos; return; fi
+  nf="$(next_in_dir "$f")"; ndur="$(duration_seconds "$nf")"
+  pos=$(( pos - dur ))
+  [[ -n "$ndur" && "$ndur" -gt 0 ]] && pos=$(( pos % ndur ))
+  SCHED_FILE="$nf"; SCHED_DUR="$ndur"; SCHED_START=$pos
 }
 
 # === IPC: send a JSON command to mpv ===
@@ -205,13 +228,12 @@ play_channel() {
   local f="$1" channel="$2" forced_start="${3:-}"
   local dur start s h m r rh rm duration_str remaining_str osd
 
-  echo "-> [$channel] $(basename "$f")"
-  dur="$(duration_seconds "$f")"
   if [[ -n "$forced_start" ]]; then
-    start="$forced_start"
+    dur="$(duration_seconds "$f")"; start="$forced_start"
   else
-    start="$(choose_start_offset "$f" "$dur")"
+    schedule "$f"; f="$SCHED_FILE"; dur="$SCHED_DUR"; start="$SCHED_START"
   fi
+  echo "-> [$channel] $(basename "$f")"
 
   s=$start; h=$((s/3600)); m=$(((s%3600)/60))
   (( h )) && duration_str="${h}h${m}min" || duration_str="${m}min"
@@ -254,7 +276,7 @@ start_player() {
   local f="${LINEUP[$idx]}" start
   [[ -n "$PLAYER_PID" ]] && { kill_tree "$PLAYER_PID"; PLAYER_PID=""; }
   rm -f "$IPC" /tmp/charlietv3-seek
-  start="$(choose_start_offset "$f")"
+  schedule "$f"; f="$SCHED_FILE"; start="$SCHED_START"
   echo "-> [$((idx+1))/${#LINEUP[@]}] $(basename "$f")"
   bash master3.sh "$f" "$start" &
   PLAYER_PID=$!
