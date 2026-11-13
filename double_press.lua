@@ -11,11 +11,13 @@ local POST_DOUBLE_GRACE = TIMEOUT * 2  -- suppress single if it fires within thi
 -- different characters, so the layout picked in charlietv4.sh (passed via
 -- the CHARLIETV_LAYOUT env var) selects the matching characters here.
 local LAYOUT = os.getenv("CHARLIETV_LAYOUT") or "qwerty"
-local next_prev_key, restart_key
+local next_prev_key, restart_key, reset_keys
 if LAYOUT == "dvorak" then
     next_prev_key, restart_key = "s", "-"
+    reset_keys = { "KP_INS", "KP0", "0", "'", "f" }
 else
     next_prev_key, restart_key = ";", "'"
+    reset_keys = { "KP_INS", "KP0", "0", "q", "y" }
 end
 
 -- Escalating skip: each skip within SKIP_RESET seconds of the last one (same
@@ -74,6 +76,15 @@ local bindings = {
       double = { fn = function() do_skip(1) end },
       single = { fn = function() do_skip(-1) end } },
 }
+
+-- "Let's get restarted in here" keys: single = back to the start,
+-- double = quit CharlieTV (same as the tv-quit key).
+for _, k in ipairs(reset_keys) do
+    table.insert(bindings, { key = k,
+        double = { cmd = {"script-binding", "charlietv3_keys/tv-quit"} },
+        single = { cmd = {"seek", "0.25", "absolute-percent"},
+                   text = "Let's get restarted in here" } })
+end
 
 local state = {}
 
