@@ -77,13 +77,25 @@ local bindings = {
       single = { fn = function() do_skip(-1) end } },
 }
 
--- "Let's get restarted in here" keys: single = back to the start,
--- double = quit CharlieTV (same as the tv-quit key).
-for _, k in ipairs(reset_keys) do
-    table.insert(bindings, { key = k,
-        double = { cmd = {"script-binding", "charlietv3_keys/tv-quit"} },
-        single = { cmd = {"seek", "0.25", "absolute-percent"},
-                   text = "Let's get restarted in here" } })
+-- "Let's get restarted in here" keys: first press restarts right away;
+-- a second press within RESET_QUIT_WINDOW quits CharlieTV (same as tv-quit).
+-- Handled separately from the timed single/double logic above because
+-- remotes are slow to send repeat presses (often >0.3s apart), and restarting
+-- just before quitting is harmless, so there's no need to delay the single.
+local RESET_QUIT_WINDOW = 1.0
+local last_reset = -math.huge
+for i, k in ipairs(reset_keys) do
+    mp.add_forced_key_binding(k, "reset" .. i, function()
+        local now = mp.get_time()
+        if now - last_reset < RESET_QUIT_WINDOW then
+            last_reset = -math.huge
+            mp.commandv("script-binding", "charlietv3_keys/tv-quit")
+            return
+        end
+        last_reset = now
+        mp.commandv("seek", "0.25", "absolute-percent")
+        mp.commandv("show-text", "Let's get restarted in here")
+    end)
 end
 
 local state = {}
