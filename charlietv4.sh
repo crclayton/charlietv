@@ -9,13 +9,14 @@ ANCHOR_HOUR="${ANCHOR_HOUR:-10}"
 ANCHOR_MIN="${ANCHOR_MIN:-0}"
 
 CHARLIETV_LAYOUT="qwerty"
+FRESH=0
 args=()
 for arg in "$@"; do
-  if [[ "$arg" == "--dvorak" ]]; then
-    CHARLIETV_LAYOUT="dvorak"
-  else
-    args+=("$arg")
-  fi
+  case "$arg" in
+    --dvorak) CHARLIETV_LAYOUT="dvorak" ;;
+    --fresh)  FRESH=1 ;;
+    *)        args+=("$arg") ;;
+  esac
 done
 set -- "${args[@]}"
 export CHARLIETV_LAYOUT
@@ -54,18 +55,21 @@ read -r n_movies n_tv n_new < <(
 days_since_epoch=$(( $(date +%s) / 86400 ))
 
 # Lineup is saved here (off the drive) so a crash/rerun resumes the same channels.
-# Deleted on a clean quit; ignored if it's from another day or other arguments.
+# Deleted on a clean quit; ignored if it's from another day or other arguments,
+# or discarded with --fresh (e.g. when it keeps resuming onto a broken file).
 STATE=/tmp/charlietv3-state
 STATE_KEY="$*"
 idx=0
 LINEUP=()
+
+(( FRESH )) && rm -f "$STATE"
 
 if [[ -r "$STATE" ]]; then
   mapfile -d '' saved < "$STATE"
   if [[ "${saved[0]}" == "$days_since_epoch" && "${saved[1]}" == "$STATE_KEY" && "${#saved[@]}" -gt 3 ]]; then
     idx="${saved[2]}"
     LINEUP=("${saved[@]:3}")
-    echo "Resuming previous CharlieTV lineup (run with no state: rm $STATE)"
+    echo "Resuming previous CharlieTV lineup (start a new one with --fresh)"
   fi
 fi
 

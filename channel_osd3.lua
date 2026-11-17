@@ -96,6 +96,9 @@ end)
 -- Playing: no info, and whatever filter was on before pausing (e.g. a KP5 pick).
 local PAUSE_SHADERS = "NoChroma.hook:crt-lottes.glsl"
 local saved_shaders = nil
+-- Darken the paused picture so the yellow info text stands out. Uses gamma,
+-- not brightness, since charlietv3_keys.lua resets brightness on every seek.
+local PAUSE_GAMMA = -5
 
 mp.observe_property("pause", "bool", function(_, paused)
     if paused then
@@ -103,11 +106,13 @@ mp.observe_property("pause", "bool", function(_, paused)
             saved_shaders = mp.get_property_native("glsl-shaders") or {}
         end
         mp.set_property("glsl-shaders", PAUSE_SHADERS)
+        mp.set_property_number("gamma", PAUSE_GAMMA)
         show_info()
     else
         if saved_shaders ~= nil then
             mp.set_property_native("glsl-shaders", saved_shaders)
             saved_shaders = nil
+            mp.set_property_number("gamma", 0)
         end
         if info_ov then
             info_ov:remove()
