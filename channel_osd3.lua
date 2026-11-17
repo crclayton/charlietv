@@ -91,11 +91,27 @@ mp.register_event("playback-restart", function()
     if info_ov then show_info() end
 end)
 
-mp.register_script_message("toggle-info", function()
-    if info_ov then
-        info_ov:remove()
-        info_ov = nil
-    else
+-- Info screen and pause filter follow the pause state, however pause was
+-- toggled (keys, remote, mouse/GUI, IPC). Paused: CRT filter + info screen.
+-- Playing: no info, and whatever filter was on before pausing (e.g. a KP5 pick).
+local PAUSE_SHADERS = "NoChroma.hook:crt-lottes.glsl"
+local saved_shaders = nil
+
+mp.observe_property("pause", "bool", function(_, paused)
+    if paused then
+        if saved_shaders == nil then
+            saved_shaders = mp.get_property_native("glsl-shaders") or {}
+        end
+        mp.set_property("glsl-shaders", PAUSE_SHADERS)
         show_info()
+    else
+        if saved_shaders ~= nil then
+            mp.set_property_native("glsl-shaders", saved_shaders)
+            saved_shaders = nil
+        end
+        if info_ov then
+            info_ov:remove()
+            info_ov = nil
+        end
     end
 end)
