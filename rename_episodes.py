@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Rename TV episode files to: ShowName.SxxExx.EpisodeTitle.ext
+Rename video files to: Show_Name_SxxExx_Episode_Title.ext (or Title_Year.ext)
 Run without arguments for dry-run. Pass --execute to actually rename.
 Pass --show-skipped to also print files that can't be auto-renamed.
 """
@@ -46,7 +46,7 @@ TECH_SET = {
     # Language codes (common in multi-audio releases)
     'ita', 'eng', 'multi', 'dubbed', 'sub', 'subs',
     # Release modifiers
-    'repack', 'proper', 'remux',
+    'repack', 'proper', 'remux', 'remastered',
     # Encoding metrics / tools
     'ssim',
 }
@@ -114,8 +114,43 @@ def clean_dir_show_name(dirname):
             break
         name_tokens.append(tok)
     if name_tokens:
-        return '.'.join(name_tokens)
-    return re.sub(r'[_\-\s]+', '.', dirname).strip('.')
+        return '_'.join(name_tokens)
+    return re.sub(r'[._\-\s]+', '_', dirname).strip('_')
+
+
+SITE_PREFIX_RE = re.compile(r'(?i)^www\.[\w-]+?\.(?:com|org|net|to|me)[-_.\s]*')
+POSSESSIVE_RE  = re.compile(r'(?<=[A-Za-z])[._](s|t|ll|re|ve)(?=[._\-\s]|$)')  # Satan_s → Satans, wasn_t → wasnt
+
+
+def build_plain_name(stem, ext):
+    """Movies/specials with no episode code: Title.Year.ext (year optional)."""
+    s = SITE_PREFIX_RE.sub('', stem)
+    s = normalize_compound_tokens(s)
+    tokens = [t for t in re.split(r'[._\-\s,]+', s) if t]
+
+    year = None
+    if tokens and YEAR_RE.match(tokens[0]):   # 1996-VeggieTales-... → year at end
+        year = tokens.pop(0)
+
+    title_tokens = []
+    for i, tok in enumerate(tokens):
+        if YEAR_RE.match(tok) and title_tokens:
+            year = year or tok
+            nxt = tokens[i + 1] if i + 1 < len(tokens) else None
+            if nxt is None or is_tech(nxt):
+                break
+            continue   # year mid-title (Christmas-1998-Storybook_Friends-...)
+        if is_tech(tok):
+            break
+        title_tokens.append(tok)
+
+    while title_tokens and is_encoder_tag(title_tokens[-1]):
+        title_tokens.pop()
+
+    if not title_tokens:
+        return None, "couldn't find a title"
+    parts = title_tokens + ([year] if year else [])
+    return '_'.join(parts) + ext.lower(), None
 
 
 def build_new_name(dirpath, filename):
@@ -123,15 +158,17 @@ def build_new_name(dirpath, filename):
     if ext.lower() not in VIDEO_EXTS:
         return None, "not a video file"
 
+    stem = POSSESSIVE_RE.sub(r'\1', stem)
+
     m = EP_PATTERN.search(stem)
     if not m:
-        return None, "no episode code found"
+        return build_plain_name(stem, ext)
 
     # Prefer the filename prefix (before episode code) as show name — it's
     # already clean. Fall back to stripping tech tags from the directory name.
     prefix = stem[:m.start()].strip('._- ')
     if prefix:
-        show_name = re.sub(r'[_\-\s]+', '.', prefix).strip('.')
+        show_name = re.sub(r'[._\-\s,]+', '_', prefix).strip('_')
     else:
         show_name = clean_dir_show_name(os.path.basename(dirpath))
 
@@ -152,7 +189,7 @@ def build_new_name(dirpath, filename):
 
     # Detect split-file suffix before discarding tech info
     part_match = re.search(r'[._]part(\d+)$', after, re.IGNORECASE)
-    part_suffix = f".part{part_match.group(1)}" if part_match else ""
+    part_suffix = f"_part{part_match.group(1)}" if part_match else ""
 
     after = re.sub(r'^[._\-\s,]+', '', after)
     after = normalize_compound_tokens(after)
@@ -172,9 +209,9 @@ def build_new_name(dirpath, filename):
     while title_tokens and is_encoder_tag(title_tokens[-1]):
         title_tokens.pop()
 
-    title = '.'.join(title_tokens)
+    title = '_'.join(title_tokens)
 
-    base = f"{show_name}.{ep_code}.{title}" if title else f"{show_name}.{ep_code}"
+    base = f"{show_name}_{ep_code}_{title}" if title else f"{show_name}_{ep_code}"
     return base + part_suffix + ext.lower(), None
 
 
@@ -239,7 +276,7 @@ def main():
     print("─" * 60)
     print(f"Total video files   : {total}")
     print(f"{action}          : {renamed}")
-    print(f"Skipped (no ep code): {skipped}")
+    print(f"Skipped (no title)  : {skipped}")
     if collisions:
         print(f"Collisions          : {collisions}  ← review manually")
 
