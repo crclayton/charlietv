@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Rename video files to: Show_Name_SxxExx_Episode_Title.ext (or Title_Year.ext)
+Rename video files to: Show_Name_SxxExx_Episode_Title.ext (or Title_Year.ext),
+rename matching subtitles with them, and clean folder names under Movies/New/TV.
 Run without arguments for dry-run. Pass --execute to actually rename.
 Pass --show-skipped to also print files that can't be auto-renamed.
 """
@@ -215,6 +216,66 @@ def build_new_name(dirpath, filename):
     return base + part_suffix + ext.lower(), None
 
 
+SUB_EXTS     = {'.srt', '.ass', '.ssa', '.sub', '.idx', '.vtt'}
+MEDIA_ROOTS  = ('Movies', 'New', 'TV')
+DIR_SEASON_NUM_RE = re.compile(
+    r'(?i)season[\s._-]?(\d{1,2})(?!\d)|(?<![A-Za-z0-9])S(\d{1,2})(?![\dEe-])')
+
+
+def rename_sidecars(dirpath, old_video, new_video):
+    """Rename subtitles named after the video (Old.Name.en.srt → New_Name.en.srt)."""
+    old_stem = os.path.splitext(old_video)[0]
+    new_stem = os.path.splitext(new_video)[0]
+    for f in os.listdir(dirpath):
+        if not f.startswith(old_stem) or os.path.splitext(f)[1].lower() not in SUB_EXTS:
+            continue
+        target = os.path.join(dirpath, new_stem + f[len(old_stem):])
+        if not os.path.exists(target):
+            os.rename(os.path.join(dirpath, f), target)
+
+
+def build_dir_name(rel_parts):
+    """rel_parts: path components under BASE_DIR, e.g. ('TV', 'Mad_Men_2007_S01-S07...')."""
+    name = POSSESSIVE_RE.sub(r'\1', rel_parts[-1])
+    if rel_parts[0] == 'TV' and len(rel_parts) >= 3:        # season folder
+        m = DIR_SEASON_NUM_RE.search(name)
+        if m:
+            return f"Season_{int(m.group(1) or m.group(2))}"
+    if rel_parts[0] == 'TV' and len(rel_parts) == 2:        # show folder
+        return re.sub(r'[._\-\s,]+', '_', clean_dir_show_name(name)).strip('_')
+    new, err = build_plain_name(name, '')                    # movie folder (or Subs etc.)
+    return new if new else rel_parts[-1]
+
+
+def rename_dirs(dry_run):
+    """Clean folder names under Movies/, New/ and TV/, deepest first."""
+    count = 0
+    for root in MEDIA_ROOTS:
+        top = os.path.join(BASE_DIR, root)
+        if not os.path.isdir(top):
+            continue
+        for dirpath, dirnames, _ in os.walk(top, topdown=False):
+            if dirpath == top:
+                continue
+            rel_parts = tuple(os.path.relpath(dirpath, BASE_DIR).split(os.sep))
+            old = rel_parts[-1]
+            new = build_dir_name(rel_parts)
+            if new == old:
+                continue
+            target = os.path.join(os.path.dirname(dirpath), new)
+            print(f"  DIR [{os.path.dirname(os.path.relpath(dirpath, BASE_DIR))}]")
+            print(f"  OLD: {old}/")
+            print(f"  NEW: {new}/")
+            print()
+            if os.path.exists(target):
+                print("  ERROR: target folder already exists — skipping.")
+                continue
+            count += 1
+            if not dry_run:
+                os.rename(dirpath, target)
+    return count
+
+
 def main():
     dry_run      = '--execute' not in sys.argv
     show_skipped = '--show-skipped' in sys.argv
@@ -271,6 +332,9 @@ def main():
                     collisions += 1
                 else:
                     os.rename(old_path, new_path)
+                    rename_sidecars(dirpath, filename, new_name)
+
+    dir_renames = rename_dirs(dry_run)
 
     action = "Would rename" if dry_run else "Renamed"
     print("─" * 60)
@@ -279,6 +343,8 @@ def main():
     print(f"Skipped (no title)  : {skipped}")
     if collisions:
         print(f"Collisions          : {collisions}  ← review manually")
+    dir_action = "Would rename" if dry_run else "Renamed"
+    print(f"{dir_action} folders : {dir_renames}")
 
 
 if __name__ == '__main__':
