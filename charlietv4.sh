@@ -3,6 +3,10 @@
 FIFO=/tmp/charlietv3-cmd
 IPC=/tmp/charlietv3-ipc
 
+# Absolute path of the folder we run from. Lineup paths (./TV/...), master3.sh
+# and mpv's scripts are all relative to it, see drive_reconnected below.
+START_DIR="$PWD"
+
 total=25
 
 ANCHOR_HOUR="${ANCHOR_HOUR:-10}"
@@ -275,10 +279,48 @@ kill_tree() {
   kill -9 "$1" 2>/dev/null
 }
 
-# (Re)launch mpv on the current channel.
+# If the USB drive drops out for a moment, udisks removes its mount folder and
+# the kernel brings the drive back as a new device, remounted at the same path.
+# Running processes (this script and mpv) keep their working directory on the
+# dead old mount, where every read fails with an I/O error, so relative paths
+# (./TV/..., master3.sh) break: channel changes stop working, and restarting
+# mpv fails. These helpers detect that and wait the drive out.
+
+# Succeeds if the drive is mounted and readable at START_DIR.
+drive_present() {
+  [[ -r "$START_DIR/master3.sh" ]] && ls -f "$START_DIR" >/dev/null 2>&1
+}
+
+# Succeeds if our working directory is the live mount at START_DIR (not the
+# dead mount left behind by a disconnect).
+cwd_ok() {
+  ls -f . >/dev/null 2>&1 &&
+    [[ "$(stat -c %d:%i . 2>/dev/null)" == "$(stat -c %d:%i "$START_DIR" 2>/dev/null)" ]]
+}
+
+# Succeeds once the drive is back but we're still on the dead mount.
+drive_reconnected() {
+  drive_present && ! cwd_ok
+}
+
+# Wait (up to 60s) for the drive, then cd onto the live mount.
+wait_for_drive() {
+  local i
+  for ((i = 0; i < 120; i++)); do
+    if drive_present; then
+      cd "$START_DIR" && return 0
+    fi
+    (( i == 0 )) && echo "!! drive not available — waiting for it to come back"
+    sleep 0.5
+  done
+  return 1
+}
+
+# (Re)launch mpv on the current channel, waiting for the drive if needed.
 start_player() {
   local f="${LINEUP[$idx]}" start
   [[ -n "$PLAYER_PID" ]] && { kill_tree "$PLAYER_PID"; PLAYER_PID=""; }
+  wait_for_drive || return 1
   rm -f "$IPC" /tmp/charlietv3-seek
   schedule "$f"; f="$SCHED_FILE"; start="$SCHED_START"
   echo "-> [$((idx+1))/${#LINEUP[@]}] $(basename "$f")"
@@ -332,6 +374,12 @@ start_player || { echo "mpv failed to start"; exit 1; }
 
 # === Main loop ===
 while true; do
+  if drive_reconnected; then
+    echo "!! drive reconnected — restarting player"
+    while IFS= read -r -t 0.1 _ <&3; do :; done   # drop keys pressed while it was out
+    start_player || { echo "mpv failed to restart"; exit 1; }
+    continue
+  fi
   if IFS= read -r -t 2 cmd <&3; then
     case "$cmd" in
       next|prev)
@@ -380,8 +428,14 @@ while true; do
         ;;
     esac
   else
-    # Timeout — mpv window gone means quit, as before.
-    kill -0 "$PLAYER_PID" 2>/dev/null || { rm -f "$STATE"; exit 0; }
+    # Timeout — mpv window gone means quit, unless the drive went away under
+    # it (mpv itself runs from the drive), in which case bring it back.
+    if ! kill -0 "$PLAYER_PID" 2>/dev/null; then
+      cwd_ok && { rm -f "$STATE"; exit 0; }
+      echo "!! mpv died while the drive was away — restarting player"
+      start_player || { echo "mpv failed to restart"; exit 1; }
+      continue
+    fi
     if player_frozen; then
       echo "!! mpv froze — restarting player"
       start_player || { echo "mpv failed to restart"; exit 1; }
