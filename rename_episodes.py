@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
 Rename video files to: Show_Name_SxxExx_Episode_Title.ext (or Title_Year.ext),
-rename matching subtitles with them, and clean folder names under Movies/New/TV.
+rename matching subtitles with them, flatten TV/<Show>/Season_N/ folders into
+TV/<Show>/, flatten Movies/<Folder>/ and New/<Folder>/ into
+Movies/ and New/, and clean folder names under Movies/New/TV.
 Run without arguments for dry-run. Pass --execute to actually rename.
 Pass --show-skipped to also print files that can't be auto-renamed.
 """
@@ -247,6 +249,85 @@ def build_dir_name(rel_parts):
     return new if new else rel_parts[-1]
 
 
+def flatten_tv_seasons(dry_run):
+    """Move everything in TV/<Show>/<subdir>/... up into TV/<Show>/ and remove
+    the emptied subdirs. Videos without an episode code stay put (their season
+    would be lost), as does anything whose target name already exists."""
+    moved = 0
+    tv = os.path.join(BASE_DIR, 'TV')
+    if not os.path.isdir(tv):
+        return 0
+    for show in sorted(os.listdir(tv)):
+        show_dir = os.path.join(tv, show)
+        if not os.path.isdir(show_dir):
+            continue
+        claimed = set(os.listdir(show_dir))
+        for dirpath, _, filenames in sorted(os.walk(show_dir)):
+            if dirpath == show_dir:
+                continue
+            rel_dir = os.path.relpath(dirpath, BASE_DIR)
+            for f in sorted(filenames):
+                ext = os.path.splitext(f)[1].lower()
+                if ext in VIDEO_EXTS and not EP_PATTERN.search(f):
+                    print(f"  KEEP [{rel_dir}] {f}  (no episode code — season would be lost)")
+                    continue
+                if f in claimed:
+                    print(f"  ERROR [{rel_dir}] {f}  — already exists in {show}/, skipping.")
+                    continue
+                claimed.add(f)
+                print(f"  FLATTEN [{rel_dir}] {f} → TV/{show}/")
+                moved += 1
+                if not dry_run:
+                    os.rename(os.path.join(dirpath, f), os.path.join(show_dir, f))
+        if not dry_run:
+            for dirpath, _, _ in os.walk(show_dir, topdown=False):
+                if dirpath != show_dir and not os.listdir(dirpath):
+                    os.rmdir(dirpath)
+    if moved:
+        print()
+    return moved
+
+
+def flatten_movies(dry_run, root='Movies'):
+    """Move everything in <root>/<Folder>/... up into <root>/ (Movies/ or New/) and remove the
+    emptied folders. Files whose names don't start with the folder's video
+    name (e.g. Subs/2_Eng.srt) are prefixed with it so they stay associated
+    and don't collide: Elf_2003.2_Eng.srt."""
+    moved = 0
+    movies = os.path.join(BASE_DIR, root)
+    if not os.path.isdir(movies):
+        return 0
+    claimed = set(os.listdir(movies))
+    for folder in sorted(os.listdir(movies)):
+        folder_dir = os.path.join(movies, folder)
+        if not os.path.isdir(folder_dir):
+            continue
+        files = [(dp, f) for dp, _, fs in sorted(os.walk(folder_dir)) for f in sorted(fs)]
+        video_stems = [os.path.splitext(f)[0] for _, f in files
+                       if os.path.splitext(f)[1].lower() in VIDEO_EXTS]
+        prefix = video_stems[0] if len(video_stems) == 1 else folder
+        for dirpath, f in files:
+            rel_dir = os.path.relpath(dirpath, BASE_DIR)
+            new = f
+            if not any(f.startswith(s) for s in video_stems):
+                new = f"{prefix}.{f}"
+            if new in claimed:
+                print(f"  ERROR [{rel_dir}] {f}  — {new} already exists in {root}/, skipping.")
+                continue
+            claimed.add(new)
+            print(f"  FLATTEN [{rel_dir}] {f} → {root}/{new}")
+            moved += 1
+            if not dry_run:
+                os.rename(os.path.join(dirpath, f), os.path.join(movies, new))
+        if not dry_run:
+            for dirpath, _, _ in os.walk(folder_dir, topdown=False):
+                if not os.listdir(dirpath):
+                    os.rmdir(dirpath)
+    if moved:
+        print()
+    return moved
+
+
 def rename_dirs(dry_run):
     """Clean folder names under Movies/, New/ and TV/, deepest first."""
     count = 0
@@ -282,6 +363,10 @@ def main():
 
     if dry_run:
         print("DRY RUN — no files will be changed. Pass --execute to rename.\n")
+
+    flattened = flatten_tv_seasons(dry_run)
+    flattened_movies = flatten_movies(dry_run, 'Movies')
+    flattened_new = flatten_movies(dry_run, 'New')
 
     total = renamed = skipped = collisions = 0
     seen_targets = {}
@@ -338,6 +423,9 @@ def main():
 
     action = "Would rename" if dry_run else "Renamed"
     print("─" * 60)
+    print(f"{'Would flatten' if dry_run else 'Flattened'}       : {flattened}  (season files → show folder)")
+    print(f"{'Would flatten' if dry_run else 'Flattened'}       : {flattened_movies}  (movie folder files → Movies/)")
+    print(f"{'Would flatten' if dry_run else 'Flattened'}       : {flattened_new}  (movie folder files → New/)")
     print(f"Total video files   : {total}")
     print(f"{action}          : {renamed}")
     print(f"Skipped (no title)  : {skipped}")
