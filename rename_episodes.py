@@ -249,10 +249,11 @@ def build_dir_name(rel_parts):
     return new if new else rel_parts[-1]
 
 
-def flatten_tv_seasons(dry_run):
+def flatten_tv_seasons(dry_run, moves):
     """Move everything in TV/<Show>/<subdir>/... up into TV/<Show>/ and remove
     the emptied subdirs. Videos without an episode code stay put (their season
-    would be lost), as does anything whose target name already exists."""
+    would be lost), as does anything whose target name already exists.
+    Each planned move is recorded in moves as {old path: new path}."""
     moved = 0
     tv = os.path.join(BASE_DIR, 'TV')
     if not os.path.isdir(tv):
@@ -277,8 +278,10 @@ def flatten_tv_seasons(dry_run):
                 claimed.add(f)
                 print(f"  FLATTEN [{rel_dir}] {f} → TV/{show}/")
                 moved += 1
+                src, dst = os.path.join(dirpath, f), os.path.join(show_dir, f)
+                moves[src] = dst
                 if not dry_run:
-                    os.rename(os.path.join(dirpath, f), os.path.join(show_dir, f))
+                    os.rename(src, dst)
         if not dry_run:
             for dirpath, _, _ in os.walk(show_dir, topdown=False):
                 if dirpath != show_dir and not os.listdir(dirpath):
@@ -288,11 +291,11 @@ def flatten_tv_seasons(dry_run):
     return moved
 
 
-def flatten_movies(dry_run, root='Movies'):
+def flatten_movies(dry_run, moves, root='Movies'):
     """Move everything in <root>/<Folder>/... up into <root>/ (Movies/ or New/) and remove the
     emptied folders. Files whose names don't start with the folder's video
     name (e.g. Subs/2_Eng.srt) are prefixed with it so they stay associated
-    and don't collide: Elf_2003.2_Eng.srt."""
+    and don't collide: Elf_2003.2_Eng.srt. Planned moves go in moves, as above."""
     moved = 0
     movies = os.path.join(BASE_DIR, root)
     if not os.path.isdir(movies):
@@ -317,8 +320,10 @@ def flatten_movies(dry_run, root='Movies'):
             claimed.add(new)
             print(f"  FLATTEN [{rel_dir}] {f} → {root}/{new}")
             moved += 1
+            src, dst = os.path.join(dirpath, f), os.path.join(movies, new)
+            moves[src] = dst
             if not dry_run:
-                os.rename(os.path.join(dirpath, f), os.path.join(movies, new))
+                os.rename(src, dst)
         if not dry_run:
             for dirpath, _, _ in os.walk(folder_dir, topdown=False):
                 if not os.listdir(dirpath):
@@ -328,15 +333,31 @@ def flatten_movies(dry_run, root='Movies'):
     return moved
 
 
-def rename_dirs(dry_run):
-    """Clean folder names under Movies/, New/ and TV/, deepest first."""
+def rename_dirs(dry_run, present):
+    """Clean folder names under Movies/, New/ and TV/, deepest first.
+    present is the set of file paths after flattening. In a dry run the
+    flattened-out folders are still on disk, so folders the flatten step would
+    have emptied and removed (any below TV/<Show>/, Movies/ or New/ with no
+    file left under them) are skipped, as they're already gone in --execute."""
+    occupied = set()
+    for path in present:
+        d = os.path.dirname(path)
+        while d.startswith(BASE_DIR) and d not in occupied:
+            occupied.add(d)
+            d = os.path.dirname(d)
+
+    def removed(dirpath):
+        rel_parts = os.path.relpath(dirpath, BASE_DIR).split(os.sep)
+        flattened_depth = 3 if rel_parts[0] == 'TV' else 2
+        return len(rel_parts) >= flattened_depth and dirpath not in occupied
+
     count = 0
     for root in MEDIA_ROOTS:
         top = os.path.join(BASE_DIR, root)
         if not os.path.isdir(top):
             continue
         for dirpath, dirnames, _ in os.walk(top, topdown=False):
-            if dirpath == top:
+            if dirpath == top or (dry_run and removed(dirpath)):
                 continue
             rel_parts = tuple(os.path.relpath(dirpath, BASE_DIR).split(os.sep))
             old = rel_parts[-1]
@@ -348,7 +369,7 @@ def rename_dirs(dry_run):
             print(f"  OLD: {old}/")
             print(f"  NEW: {new}/")
             print()
-            if os.path.exists(target):
+            if os.path.exists(target) and not (dry_run and removed(target)):
                 print("  ERROR: target folder already exists — skipping.")
                 continue
             count += 1
@@ -364,62 +385,74 @@ def main():
     if dry_run:
         print("DRY RUN — no files will be changed. Pass --execute to rename.\n")
 
-    flattened = flatten_tv_seasons(dry_run)
-    flattened_movies = flatten_movies(dry_run, 'Movies')
-    flattened_new = flatten_movies(dry_run, 'New')
+    moves = {}
+    flattened = flatten_tv_seasons(dry_run, moves)
+    flattened_movies = flatten_movies(dry_run, moves, 'Movies')
+    flattened_new = flatten_movies(dry_run, moves, 'New')
+
+    # Every file path as it is after flattening. With --execute the files have
+    # really moved; in a dry run they haven't, so apply the planned moves here
+    # so the preview below sees the same layout --execute would.
+    present = set()
+    for dirpath, _, filenames in os.walk(BASE_DIR):
+        for f in filenames:
+            path = os.path.join(dirpath, f)
+            present.add(moves.get(path, path) if dry_run else path)
+    layout = sorted((os.path.split(p) for p in present),
+                    key=lambda df: (df[0].split(os.sep), df[1]))
 
     total = renamed = skipped = collisions = 0
     seen_targets = {}
 
-    for dirpath, dirnames, filenames in os.walk(BASE_DIR):
-        dirnames.sort()
-        for filename in sorted(filenames):
-            _, ext = os.path.splitext(filename)
-            if ext.lower() not in VIDEO_EXTS:
-                continue
-            total += 1
+    for dirpath, filename in layout:
+        _, ext = os.path.splitext(filename)
+        if ext.lower() not in VIDEO_EXTS:
+            continue
+        total += 1
 
-            new_name, err = build_new_name(dirpath, filename)
-            if err:
-                skipped += 1
-                if show_skipped:
-                    rel = os.path.relpath(os.path.join(dirpath, filename), BASE_DIR)
-                    print(f"SKIP  {rel}  ({err})")
-                continue
+        new_name, err = build_new_name(dirpath, filename)
+        if err:
+            skipped += 1
+            if show_skipped:
+                rel = os.path.relpath(os.path.join(dirpath, filename), BASE_DIR)
+                print(f"SKIP  {rel}  ({err})")
+            continue
 
-            if new_name == filename:
-                continue
+        if new_name == filename:
+            continue
 
-            old_path = os.path.join(dirpath, filename)
-            new_path = os.path.join(dirpath, new_name)
+        old_path = os.path.join(dirpath, filename)
+        new_path = os.path.join(dirpath, new_name)
 
-            if new_path in seen_targets:
-                collisions += 1
-                rel = os.path.relpath(dirpath, BASE_DIR)
-                print(f"COLLISION [{rel}]")
-                print(f"  {filename!r} → {new_name!r}")
-                print(f"  already claimed by {seen_targets[new_path]!r}")
-                print(f"  One of these is likely a duplicate — delete it manually.")
-                print()
-                continue
-            seen_targets[new_path] = filename
-
-            rel_dir = os.path.relpath(dirpath, BASE_DIR)
-            print(f"  [{rel_dir}]")
-            print(f"  OLD: {filename}")
-            print(f"  NEW: {new_name}")
+        if new_path in seen_targets:
+            collisions += 1
+            rel = os.path.relpath(dirpath, BASE_DIR)
+            print(f"COLLISION [{rel}]")
+            print(f"  {filename!r} → {new_name!r}")
+            print(f"  already claimed by {seen_targets[new_path]!r}")
+            print(f"  One of these is likely a duplicate — delete it manually.")
             print()
-            renamed += 1
+            continue
+        seen_targets[new_path] = filename
 
+        rel_dir = os.path.relpath(dirpath, BASE_DIR)
+        print(f"  [{rel_dir}]")
+        print(f"  OLD: {filename}")
+        print(f"  NEW: {new_name}")
+        print()
+        renamed += 1
+
+        if new_path in present:
+            print(f"  ERROR: target already exists on disk — skipping.")
+            collisions += 1
+        else:
+            present.discard(old_path)
+            present.add(new_path)
             if not dry_run:
-                if os.path.exists(new_path):
-                    print(f"  ERROR: target already exists on disk — skipping.")
-                    collisions += 1
-                else:
-                    os.rename(old_path, new_path)
-                    rename_sidecars(dirpath, filename, new_name)
+                os.rename(old_path, new_path)
+                rename_sidecars(dirpath, filename, new_name)
 
-    dir_renames = rename_dirs(dry_run)
+    dir_renames = rename_dirs(dry_run, present)
 
     action = "Would rename" if dry_run else "Renamed"
     print("─" * 60)
