@@ -31,8 +31,6 @@ end
 -- OSD always shows the qwerty key labels, even under --dvorak, since
 -- that's the layout printed on the keycaps.
 local fullscreen_key = "f"
-local save_key       = "v"
-local dtap_key       = ";"
 
 local function show_info()
     if info_ov then info_ov:remove() end
@@ -53,20 +51,23 @@ local function show_info()
         .. "\\N\\N"
         .. "{\\c&888888&}PC controls:                                                                          Remote controls:\\N"
         .. "{\\c&H0596EB&}\\N\\N"
-        .. "(← and →) change channels                                                            +---------------+\\N"
-        .. "(INSERT)  jump to beginning                                                           |     +vol      |\\N"
-        .. "(ENTER)   next channel                                                                |       ^       |\\N"
-        .. "(q)       quit                                                                        | -ch <   > +ch |\\N"
-        .. "\\h                                                                                     |       v       |\\N"
-        .. " (" .. fullscreen_key .. ") toggle fullscreen                                                                 |     -vol      |\\N"
-        .. " (" .. dtap_key .. ") previous file, (" .. dtap_key .. dtap_key .. ") next file                                                     |               |\\N"
-        .. " (" .. save_key .. ") keep new movie, (del) remove file                                                 |    [pause]    |\\N"
-        .. "\\h                                                                                     |   [restart]   |\\N"
-        .. "(7) and (9) jump chapters                                                             |               |\\N"
-        .. "(4) and (6) jump files                                                                | -file  +file  |\\N"
-        .. "(1) and (3) jump time                                                                 | -time  +time  |\\N"
-        .. "(5) cycle filters                                                                     |               |\\N"
-        .. "(0) restart episode                                                                   +---------------+\\N"
+        .. "(← and →) change channels                                                            +----------------+\\N"
+        .. " (SPACE)    pause                                                                      |                |\\N"
+        .. "\\h                                                                                     |     +vol       |\\N"
+        .. " (" .. fullscreen_key .. ")        toggle fullscreen                                                          |       ^        |\\N"
+        .. "(q)        start from beginning                                                       | -ch <   > +ch  |\\N"
+        .. "(qq)       quit                                                                       |       v        |\\N"
+        .. "\\h                                                                                     |     -vol       |\\N"
+        .. "(HOME)     keep new movie                                                             |                |\\N"
+        .. "(DEL)      delete file                                                                |    [pause]     |\\N"
+        .. "\\h                                                                                     | [restart/quit] |\\N"
+        .. "(7) and (9) seek chapters                                                             |                |\\N"
+        .. "(4) and (6) seek files                                                                | -file   +file  |\\N"
+        .. "(1) and (3) seek time                                                                 | -time   +time  |\\N"
+        .. "\\h                                                                                     |                |\\N"
+        .. "(8) random episode                                                             |                |\\N"
+        .. "(5) cycle filters                                                                     |                |\\N"
+        .. "(0) start from beginning                                                              +----------------+\\N"
         .. "{\\c&HFFFFFF&}"
     info_ov:update()
 end

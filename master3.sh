@@ -48,7 +48,6 @@ fi
     --sub-ass-override=force \
     --embeddedfonts=no \
     --idle=yes \
-    --script=nextfile_and_rewind.lua \
     --script=nextfile.lua \
     --script=channel_osd3.lua \
     --script=auto-nextfile.lua \
